@@ -8,9 +8,9 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "build:render": "npm run build && npm run prisma:generate && npm run prisma:migrate:deploy",
-    "prisma:generate": "node_modules/.bin/prisma generate",
+    "prisma:generate": "npm exec prisma generate",
     "prisma:migrate": "npx prisma migrate dev",
-    "prisma:migrate:deploy": "node_modules/.bin/prisma migrate deploy",
+    "prisma:migrate:deploy": "npm exec prisma migrate deploy",
     "prisma:studio": "npx prisma studio",
     "prisma:seed": "ts-node prisma/seed.ts",
     "test:assignment": "ts-node src/scripts/test-assignment.ts"
