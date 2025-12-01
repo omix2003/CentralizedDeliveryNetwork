@@ -23,8 +23,20 @@ export const authenticate =(
     next:NextFunction
 ) =>{
     try{
-        const authHeader = req.headers.authorization;
+        // Express lowercases header names, so 'authorization' is correct
+        const authHeader = req.headers.authorization || req.headers['authorization'];
+        console.log('[AUTH MIDDLEWARE] Checking auth:', {
+            hasHeader: !!authHeader,
+            headerValue: authHeader ? authHeader.substring(0, 30) + '...' : 'none',
+            headerType: typeof authHeader,
+            allAuthHeaders: Object.keys(req.headers).filter(k => k.toLowerCase().includes('auth')),
+            url: req.url,
+            path: req.path,
+            method: req.method
+        });
+        
         if(!authHeader || !authHeader.startsWith('Bearer ')){
+            console.log('[AUTH MIDDLEWARE] No valid token found');
             next(new UnauthorizedError('No token provided'));
             return;
     }

@@ -15,8 +15,8 @@ export const requireRole = (...allowedRoles: UserRole[]) => {
         next();
     };
 };
-};
 export const requireAdmin = requireRole(UserRole.ADMIN);
 export const requireAgent = requireRole(UserRole.AGENT);
 export const requirePartner = requireRole(UserRole.PARTNER);
 export const requireAgentOrPartner = requireRole(UserRole.AGENT, UserRole.PARTNER);
+export const requireAgentOrAdmin = requireRole(UserRole.AGENT, UserRole.ADMIN);
