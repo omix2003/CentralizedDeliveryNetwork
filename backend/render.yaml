@@ -2,7 +2,7 @@ services:
   - type: web
     name: delivery-network-backend
     env: node
-    buildCommand: npm install && npm run build && npx prisma generate && npx prisma migrate deploy
+    buildCommand: npm install && npm run build && ./node_modules/.bin/prisma generate && ./node_modules/.bin/prisma migrate deploy
     startCommand: npm run start
     envVars:
       - key: NODE_ENV
