@@ -1,5 +1,6 @@
 [build]
-  command = "npm install && npm run build"
+  base = "next-app"
+  command = "npm run build"
   publish = ".next"
 
 [[plugins]]
