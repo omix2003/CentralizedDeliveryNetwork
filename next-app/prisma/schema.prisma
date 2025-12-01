@@ -1,0 +1,311 @@
+// Prisma Schema for Centralized Delivery Network
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  AGENT
+  PARTNER
+  ADMIN
+}
+
+enum VehicleType {
+  BIKE
+  SCOOTER
+  CAR
+  BICYCLE
+}
+
+enum AgentStatus {
+  OFFLINE
+  ONLINE
+  ON_TRIP
+}
+
+enum OrderStatus {
+  SEARCHING_AGENT
+  ASSIGNED
+  PICKED_UP
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum EventType {
+  AGENT_ONLINE
+  AGENT_OFFLINE
+  ORDER_CREATED
+  ORDER_ASSIGNED
+  ORDER_ACCEPTED
+  ORDER_REJECTED
+  ORDER_PICKED_UP
+  ORDER_OUT_FOR_DELIVERY
+  ORDER_DELIVERED
+  ORDER_CANCELLED
+  AGENT_LOCATION_UPDATE
+}
+
+enum ActorType {
+  AGENT
+  PARTNER
+  SYSTEM
+  ADMIN
+}
+
+// Main User table - all authentication
+model User {
+  id            String   @id @default(cuid())
+  name          String
+  email         String   @unique
+  phone         String   @unique
+  passwordHash  String
+  role          UserRole
+  emailVerified DateTime?
+  phoneVerified Boolean  @default(false)
+  profilePicture String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  agent         Agent?
+  partner       Partner?
+  notifications NotificationToken[]
+  tickets       SupportTicket[]
+
+  @@index([email])
+  @@index([phone])
+  @@index([role])
+}
+
+// Agent-specific data
+model Agent {
+  id              String      @id @default(cuid())
+  userId          String      @unique
+  vehicleType     VehicleType
+  status          AgentStatus @default(OFFLINE)
+  rating          Float?      @default(0)
+  totalOrders     Int         @default(0)
+  completedOrders Int         @default(0)
+  cancelledOrders Int         @default(0)
+  acceptanceRate  Float       @default(0) // percentage
+  currentOrderId  String?     @unique
+  isApproved      Boolean     @default(false)
+  isBlocked       Boolean     @default(false)
+  blockedReason   String?
+  city            String?
+  state           String?
+  pincode         String?
+  lastOnlineAt    DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  // Relations
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders          Order[]
+  currentOrder    Order?      @relation("CurrentOrder", fields: [currentOrderId], references: [id])
+  documents       AgentDocument[]
+  locationHistory AgentLocation[]
+  tickets         SupportTicket[]
+
+  @@index([status])
+  @@index([isApproved])
+  @@index([city])
+}
+
+// Agent documents (license, vehicle registration, etc.)
+model AgentDocument {
+  id          String   @id @default(cuid())
+  agentId     String
+  documentType String  // LICENSE, VEHICLE_REG, ID_PROOF, etc.
+  fileName    String
+  fileUrl     String
+  verified    Boolean  @default(false)
+  uploadedAt  DateTime @default(now())
+
+  agent       Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId])
+}
+
+// Agent location history (optional - for analytics)
+model AgentLocation {
+  id        String   @id @default(cuid())
+  agentId   String
+  latitude  Float
+  longitude Float
+  timestamp DateTime @default(now())
+
+  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, timestamp])
+  @@index([timestamp])
+}
+
+// Partner-specific data
+model Partner {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  companyName String
+  apiKey      String   @unique
+  webhookUrl  String?
+  isActive    Boolean  @default(true)
+  city        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders      Order[]
+  tickets     SupportTicket[]
+  dailyStats  PartnerDailyStats[]
+
+  @@index([apiKey])
+  @@index([isActive])
+}
+
+// Orders
+model Order {
+  id            String      @id @default(cuid())
+  partnerId     String
+  agentId       String?
+  pickupLat     Float
+  pickupLng     Float
+  dropLat       Float
+  dropLng       Float
+  payoutAmount  Float
+  priority      String?     @default("NORMAL") // HIGH, NORMAL, LOW
+  status        OrderStatus @default(SEARCHING_AGENT)
+  assignedAt    DateTime?
+  pickedUpAt    DateTime?
+  deliveredAt   DateTime?
+  cancelledAt   DateTime?
+  cancellationReason String?
+  estimatedDuration Int?    // in minutes
+  actualDuration    Int?    // in minutes
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  // Relations
+  partner       Partner     @relation(fields: [partnerId], references: [id])
+  agent         Agent?      @relation(fields: [agentId], references: [id])
+  currentAgent  Agent?      @relation("CurrentOrder")
+  tickets       SupportTicket[]
+
+  @@index([partnerId])
+  @@index([agentId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([partnerId, status])
+}
+
+// FCM notification tokens
+model NotificationToken {
+  id        String   @id @default(cuid())
+  userId   String
+  fcmToken String   @unique
+  deviceType String? // IOS, ANDROID, WEB
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([fcmToken])
+}
+
+// Support tickets
+model SupportTicket {
+  id          String       @id @default(cuid())
+  orderId    String?
+  agentId    String?
+  partnerId  String?
+  userId     String
+  issueType  String       // DELAY, MISSING, DAMAGE, OTHER
+  description String
+  status     TicketStatus @default(OPEN)
+  resolvedAt DateTime?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  // Relations
+  order      Order?       @relation(fields: [orderId], references: [id])
+  agent      Agent?       @relation(fields: [agentId], references: [id])
+  partner    Partner?     @relation(fields: [partnerId], references: [id])
+  user       User         @relation(fields: [userId], references: [id])
+
+  @@index([orderId])
+  @@index([agentId])
+  @@index([partnerId])
+  @@index([status])
+}
+
+// Analytics events
+model AppEvent {
+  id         String    @id @default(cuid())
+  userId     String?
+  actorType  ActorType
+  eventType  EventType
+  entityType String?   // ORDER, AGENT, PARTNER
+  entityId   String?
+  metadata   Json?     // Additional event data
+  createdAt  DateTime  @default(now())
+
+  @@index([eventType])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@index([actorType])
+}
+
+// Daily aggregated stats (optional - for performance)
+model DailyStats {
+  id                String   @id @default(cuid())
+  date              DateTime @unique @db.Date
+  totalOrders       Int      @default(0)
+  completedOrders   Int      @default(0)
+  cancelledOrders   Int      @default(0)
+  activeAgents      Int      @default(0)
+  avgAssignmentTime Float?   // in seconds
+  totalPayout       Float    @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([date])
+}
+
+// Partner-specific daily stats
+model PartnerDailyStats {
+  id                String   @id @default(cuid())
+  partnerId         String
+  date              DateTime @db.Date
+  totalOrders       Int      @default(0)
+  completedOrders   Int      @default(0)
+  cancelledOrders   Int      @default(0)
+  avgAssignmentTime Float?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  partner           Partner  @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@unique([partnerId, date])
+  @@index([partnerId, date])
+}
+
+
+
+
+
+
