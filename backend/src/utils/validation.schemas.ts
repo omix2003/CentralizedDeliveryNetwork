@@ -22,6 +22,7 @@ export const updateLocationSchema =z.object({
 
 export const updateStatusSchema =z.object({
     status: z.enum(['OFFLINE', 'ONLINE', 'ON_TRIP']),
+    agentId: z.string().optional(), // Optional: for admins to update other agents' status
     });
 
 export const agentProfileUpdateSchema= z.object({
@@ -56,6 +57,16 @@ export const partnerOrderSchema = createOrderSchema;
 
 export const updateWebhookSchema =z.object({
     webhookUrl: z.string().url('Invalid webhook URL').optional(),
+});
+
+export const updateOrderSchema = z.object({
+    pickupLat: z.number().min(-90).max(90).optional(),
+    pickupLng: z.number().min(-180).max(180).optional(),
+    dropLat: z.number().min(-90).max(90).optional(),
+    dropLng: z.number().min(-180).max(180).optional(),
+    payoutAmount: z.number().positive('Payout amount must be positive').optional(),
+    priority: z.enum(['HIGH', 'NORMAL', 'LOW']).optional(),
+    estimatedDuration: z.number().int().positive().optional(),
 });
 
 export const approveAgentSchema=z.object({

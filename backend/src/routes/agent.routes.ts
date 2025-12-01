@@ -1,26 +1,76 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth.middleware';
-import { requireAgent } from '../middleware/role.middleware';
+import { requireAgent, requireAgentOrAdmin } from '../middleware/role.middleware';
 import { validate } from '../middleware/validation.middleware';
 import { agentController } from '../controllers/agent.controller';
+import { uploadSingle } from '../middleware/upload.middleware';
 import {
   updateLocationSchema,
   updateStatusSchema,
   agentProfileUpdateSchema,
+  updateOrderStatusSchema,
 } from '../utils/validation.schemas';
 
 const router = Router();
 
-// All routes require authentication and agent role
+console.log('[AGENT ROUTES] Router created');
+
+// Test route without authentication to verify routes are registered
+router.get('/test', (req, res) => {
+  console.log('[AGENT ROUTES] Test route hit!');
+  res.json({ message: 'Agent routes are working!', path: req.path, timestamp: new Date().toISOString() });
+});
+
+console.log('[AGENT ROUTES] Test route registered');
+
+// All routes require authentication
+router.use((req, res, next) => {
+  console.log(`[AGENT ROUTES] Middleware hit for: ${req.method} ${req.path}`);
+  next();
+});
+
 router.use(authenticate);
-router.use(requireAgent);
 
-// Agent profile routes
-router.get('/profile', agentController.getProfile);
-router.put('/profile', validate(agentProfileUpdateSchema), agentController.updateProfile);
+console.log('[AGENT ROUTES] Authentication middleware registered');
 
-// Agent location and status
-router.post('/location', validate(updateLocationSchema), agentController.updateLocation);
-router.post('/status', validate(updateStatusSchema), agentController.updateStatus);
+// Agent profile routes - require agent role
+router.get('/profile', (req, res, next) => {
+  console.log('[AGENT ROUTES] /profile route handler called');
+  next();
+}, requireAgent, agentController.getProfile);
+router.put('/profile', requireAgent, validate(agentProfileUpdateSchema), agentController.updateProfile);
+
+// Agent location - require agent role
+router.post('/location', requireAgent, validate(updateLocationSchema), agentController.updateLocation);
+
+// Agent status - allow both agent and admin roles
+router.post('/status', requireAgentOrAdmin, validate(updateStatusSchema), agentController.updateStatus);
+
+// Agent metrics
+router.get('/metrics', requireAgent, agentController.getMetrics);
+
+// Agent order management
+router.get('/orders', requireAgent, agentController.getAvailableOrders);
+router.get('/my-orders', requireAgent, agentController.getMyOrders);
+router.get('/orders/:id', requireAgent, agentController.getOrderDetails);
+router.post('/orders/:id/accept', requireAgent, agentController.acceptOrder);
+router.post('/orders/:id/reject', requireAgent, agentController.rejectOrder);
+router.put('/orders/:id/status', requireAgent, validate(updateOrderStatusSchema), agentController.updateOrderStatus);
+
+// Agent document management
+router.get('/documents', requireAgent, agentController.getDocuments);
+router.post('/documents', requireAgent, (req, res, next) => {
+  uploadSingle(req, res, (err) => {
+    if (err) {
+      // Handle multer errors
+      if (err instanceof Error) {
+        return res.status(400).json({ error: err.message });
+      }
+      return res.status(400).json({ error: 'File upload error' });
+    }
+    next();
+  });
+}, agentController.uploadDocument);
+router.delete('/documents/:id', requireAgent, agentController.deleteDocument);
 
 export default router;

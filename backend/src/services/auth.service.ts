@@ -78,6 +78,18 @@ export const authService = {
           isActive: true,
         },
       });
+    } else if (data.role === UserRole.AGENT) {
+      // Create agent record with default vehicleType (BIKE)
+      // Agent can update vehicleType later via profile update endpoint
+      await prisma.agent.create({
+        data: {
+          userId: user.id,
+          vehicleType: 'BIKE', // Default, can be updated later
+          status: 'OFFLINE',
+          isApproved: false, // Requires admin approval
+          isBlocked: false,
+        },
+      });
     }
 
     // Fetch user with relations
