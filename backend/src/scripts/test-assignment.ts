@@ -13,7 +13,6 @@
 import { prisma } from '../lib/prisma';
 import { redisGeo } from '../lib/redis';
 import { assignOrder, autoAssignOrder, findAndScoreAgents } from '../services/assignment.service';
-import { redisGeo } from '../lib/redis';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -116,11 +115,12 @@ async function testFindNearbyAgents() {
     let agentId: string;
     let distance: number;
     
-    if (Array.isArray(nearbyAgents[i])) {
-      agentId = nearbyAgents[i][0] as string;
-      distance = parseFloat(nearbyAgents[i][1] as string);
+    const currentItem = nearbyAgents[i];
+    if (Array.isArray(currentItem)) {
+      agentId = currentItem[0] as string;
+      distance = parseFloat(currentItem[1] as string);
     } else {
-      agentId = nearbyAgents[i] as string;
+      agentId = currentItem as string;
       distance = parseFloat(nearbyAgents[i + 1] as string);
     }
 
