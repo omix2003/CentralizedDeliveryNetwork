@@ -122,6 +122,13 @@ export const ProfilePictureUpload: React.FC<ProfilePictureUploadProps> = ({
 
     // Determine what to display
     const displayUrl = previewUrl || normalizeImageUrl(currentImageUrl);
+    
+    // Check if URL is external (needs unoptimized)
+    const isExternalUrl = displayUrl ? (
+        displayUrl.startsWith('http://') || 
+        displayUrl.startsWith('https://') || 
+        displayUrl.startsWith('blob:')
+    ) : false;
 
     return (
         <div className="flex flex-col items-center gap-4">
@@ -134,7 +141,7 @@ export const ProfilePictureUpload: React.FC<ProfilePictureUploadProps> = ({
                             width={128}
                             height={128}
                             className="w-full h-full object-cover"
-                            unoptimized={displayUrl.startsWith('blob:')}
+                            unoptimized={isExternalUrl}
                             onError={() => {
                                 // Fallback if image fails to load
                                 setPreviewUrl(null);
