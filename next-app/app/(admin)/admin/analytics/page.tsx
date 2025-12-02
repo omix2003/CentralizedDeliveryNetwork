@@ -286,7 +286,7 @@ export default function AnalyticsPage() {
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={analytics.ordersByDay.map(item => ({
+              <LineChart data={analytics.ordersByDay.map((item: any) => ({
                 ...item,
                 date: typeof item.date === 'string' ? item.date : item.date?.toISOString?.() || item.date
               }))}>
@@ -366,7 +366,7 @@ export default function AnalyticsPage() {
         </CardHeader>
         <CardContent>
           <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={analytics.revenueByDay.map(item => ({
+            <BarChart data={analytics.revenueByDay.map((item: any) => ({
               ...item,
               date: typeof item.date === 'string' ? item.date : item.date?.toISOString?.() || item.date
             }))}>
