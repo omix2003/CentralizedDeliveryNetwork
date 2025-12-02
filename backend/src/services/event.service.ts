@@ -100,7 +100,7 @@ export const eventService = {
    */
   async logAdminEvent(
     eventType: EventType,
-    userId: string,
+    userId: string | undefined,
     entityType?: 'ORDER' | 'AGENT' | 'PARTNER' | 'USER' | 'TICKET',
     entityId?: string,
     metadata?: Record<string, any>
