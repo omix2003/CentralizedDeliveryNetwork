@@ -4,6 +4,7 @@ import { getPartnerId, getUserId } from '../utils/role.util';
 import { notifyPartner } from '../lib/webhook';
 import { OrderStatus, EventType, ActorType } from '@prisma/client';
 import { eventService } from '../services/event.service';
+import { cacheService, cacheKeys } from '../services/cache.service';
 
 export const partnerController = {
   // GET /api/partner/profile
@@ -12,6 +13,13 @@ export const partnerController = {
       const partnerId = getPartnerId(req);
       if (!partnerId) {
         return res.status(404).json({ error: 'Partner profile not found' });
+      }
+
+      // Try cache first (TTL: 5 minutes)
+      const cacheKey = cacheKeys.partner.profile(partnerId);
+      const cached = await cacheService.get(cacheKey);
+      if (cached) {
+        return res.json(cached);
       }
 
       const partner = await prisma.partner.findUnique({
@@ -32,14 +40,19 @@ export const partnerController = {
         return res.status(404).json({ error: 'Partner not found' });
       }
 
-      res.json({
+      const response = {
         id: partner.id,
         companyName: partner.companyName,
         apiKey: partner.apiKey,
         webhookUrl: partner.webhookUrl,
         isActive: partner.isActive,
         user: partner.user,
-      });
+      };
+
+      // Cache the response
+      await cacheService.set(cacheKey, response, 300); // 5 minutes
+
+      res.json(response);
     } catch (error) {
       next(error);
     }
@@ -59,6 +72,9 @@ export const partnerController = {
         where: { id: partnerId },
         data: { webhookUrl },
       });
+
+      // Invalidate cache
+      await cacheService.invalidate(cacheKeys.partner.profile(partnerId));
 
       res.json({
         id: partner.id,
@@ -102,6 +118,9 @@ export const partnerController = {
         partner.user.id,
         { action: 'API_KEY_REGENERATED' }
       );
+
+      // Invalidate cache
+      await cacheService.invalidate(cacheKeys.partner.profile(partnerId));
 
       res.json({
         id: partner.id,
@@ -679,6 +698,13 @@ export const partnerController = {
         return res.status(404).json({ error: 'Partner profile not found' });
       }
 
+      // Try cache first (TTL: 2 minutes - dashboard data changes frequently)
+      const cacheKey = cacheKeys.partner.dashboard(partnerId);
+      const cached = await cacheService.get(cacheKey);
+      if (cached) {
+        return res.json(cached);
+      }
+
       const now = new Date();
       const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
       const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -753,13 +779,82 @@ export const partnerController = {
         ? ((thisMonthOrders - lastMonthOrders) / lastMonthOrders) * 100
         : 0;
 
-      res.json({
+      const response = {
         todayOrders,
         monthlyOrders: thisMonthOrders,
         monthlyTrend: Math.round(monthlyTrend),
         activeOrders,
         deliveryIssues: cancelledOrders,
         totalDeliveries: totalCompletedOrders,
+      };
+
+      // Cache the response (2 minutes TTL)
+      await cacheService.set(cacheKey, response, 120);
+
+      res.json(response);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // GET /api/partner/analytics/heatmap - Get order locations for heatmap
+  async getOrderHeatmap(req: Request, res: Response, next: NextFunction) {
+    try {
+      const partnerId = getPartnerId(req);
+      if (!partnerId) {
+        return res.status(404).json({ error: 'Partner profile not found' });
+      }
+
+      const { startDate, endDate } = req.query;
+      
+      // Default to last 30 days if not specified
+      const start = startDate 
+        ? new Date(startDate as string)
+        : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const end = endDate 
+        ? new Date(endDate as string)
+        : new Date();
+
+      // Get order locations (pickup and dropoff points)
+      const orders = await prisma.order.findMany({
+        where: {
+          partnerId,
+          createdAt: { gte: start, lte: end },
+        },
+        select: {
+          pickupLat: true,
+          pickupLng: true,
+          dropLat: true,
+          dropLng: true,
+          status: true,
+          createdAt: true,
+        },
+      });
+
+      // Format data for heatmap: [lng, lat, intensity]
+      const heatmapData = orders.flatMap((order) => [
+        {
+          location: [order.pickupLng, order.pickupLat] as [number, number],
+          type: 'pickup' as const,
+          status: order.status,
+          date: order.createdAt.toISOString(),
+        },
+        {
+          location: [order.dropLng, order.dropLat] as [number, number],
+          type: 'dropoff' as const,
+          status: order.status,
+          date: order.createdAt.toISOString(),
+        },
+      ]);
+
+      res.json({
+        data: heatmapData,
+        bounds: orders.length > 0 ? {
+          minLng: Math.min(...orders.map(o => Math.min(o.pickupLng, o.dropLng))),
+          maxLng: Math.max(...orders.map(o => Math.max(o.pickupLng, o.dropLng))),
+          minLat: Math.min(...orders.map(o => Math.min(o.pickupLat, o.dropLat))),
+          maxLat: Math.max(...orders.map(o => Math.max(o.pickupLat, o.dropLat))),
+        } : null,
       });
     } catch (error) {
       next(error);

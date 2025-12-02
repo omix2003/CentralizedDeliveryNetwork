@@ -18,9 +18,12 @@ import {
   RefreshCw,
   AlertCircle,
   BarChart3,
-  Download
+  Download,
+  MapPin
 } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { OrderHeatmap } from '@/components/maps/OrderHeatmap';
+import { ClientOnlyMap } from '@/components/maps/ClientOnlyMap';
 
 interface AnalyticsData {
   period: {
@@ -45,7 +48,22 @@ interface AnalyticsData {
 
 export default function PartnerAnalyticsPage() {
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
+  const [heatmapData, setHeatmapData] = useState<{
+    data: Array<{
+      location: [number, number];
+      type: 'pickup' | 'dropoff';
+      status: string;
+      date: string;
+    }>;
+    bounds: {
+      minLng: number;
+      maxLng: number;
+      minLat: number;
+      maxLat: number;
+    } | null;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [heatmapLoading, setHeatmapLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState({
     startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
@@ -60,15 +78,35 @@ export default function PartnerAnalyticsPage() {
     try {
       setLoading(true);
       setError(null);
-      const data = await partnerApi.getAnalytics({
-        startDate: dateRange.startDate,
-        endDate: dateRange.endDate,
-      });
-      setAnalytics(data);
+      const [analyticsData, heatmap] = await Promise.all([
+        partnerApi.getAnalytics({
+          startDate: dateRange.startDate,
+          endDate: dateRange.endDate,
+        }),
+        loadHeatmap(),
+      ]);
+      setAnalytics(analyticsData);
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to load analytics');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadHeatmap = async () => {
+    try {
+      setHeatmapLoading(true);
+      const data = await partnerApi.getOrderHeatmap({
+        startDate: dateRange.startDate,
+        endDate: dateRange.endDate,
+      });
+      setHeatmapData(data);
+      return data;
+    } catch (err: any) {
+      console.error('Failed to load heatmap:', err);
+      return null;
+    } finally {
+      setHeatmapLoading(false);
     }
   };
 
@@ -325,6 +363,44 @@ export default function PartnerAnalyticsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Order Heatmap */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <MapPin className="h-5 w-5" />
+            Order Location Heatmap
+          </CardTitle>
+          <p className="text-sm text-gray-500 mt-1">
+            Visual representation of order pickup and dropoff locations. Hotter colors indicate higher order density.
+          </p>
+        </CardHeader>
+        <CardContent>
+          {heatmapLoading ? (
+            <div className="flex items-center justify-center h-[600px] bg-gray-50 rounded-lg border border-gray-200">
+              <div className="text-center">
+                <RefreshCw className="h-8 w-8 animate-spin text-gray-400 mx-auto mb-2" />
+                <p className="text-gray-500">Loading heatmap data...</p>
+              </div>
+            </div>
+          ) : heatmapData && heatmapData.data.length > 0 ? (
+            <ClientOnlyMap>
+              <OrderHeatmap
+                data={heatmapData.data}
+                bounds={heatmapData.bounds}
+                height="600px"
+                onPointClick={(point) => {
+                  console.log('Heatmap point clicked:', point);
+                }}
+              />
+            </ClientOnlyMap>
+          ) : (
+            <div className="flex items-center justify-center h-[600px] bg-gray-50 rounded-lg border border-gray-200">
+              <p className="text-gray-500">No order location data available for the selected period</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

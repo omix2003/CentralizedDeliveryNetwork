@@ -214,7 +214,7 @@ export default function HomePage() {
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link href="/register">
-              <Button size="lg" className="bg-yellow-400 text-gray-900 hover:bg-yellow-500 text-base px-8 py-6 shadow-xl font-bold">
+              <Button size="lg" variant="outline" className="border-2 border-white text-white hover:bg-white/10 text-base px-8 py-6">
                 Start Free Trial
                 <ArrowRight className="ml-2 h-5 w-5" />
               </Button>

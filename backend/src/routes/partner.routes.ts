@@ -25,6 +25,7 @@ router.put('/orders/:id', validate(updateOrderSchema), partnerController.updateO
 // Partner dashboard and analytics
 router.get('/dashboard', partnerController.getDashboardMetrics);
 router.get('/analytics', partnerController.getAnalytics);
+router.get('/analytics/heatmap', partnerController.getOrderHeatmap);
 
 // Support tickets
 router.get('/support/tickets', partnerController.getSupportTickets);

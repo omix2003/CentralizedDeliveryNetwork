@@ -123,6 +123,24 @@ export const partnerApi = {
     return response.data;
   },
 
+  getOrderHeatmap: async (params?: { startDate?: string; endDate?: string }): Promise<{
+    data: Array<{
+      location: [number, number];
+      type: 'pickup' | 'dropoff';
+      status: string;
+      date: string;
+    }>;
+    bounds: {
+      minLng: number;
+      maxLng: number;
+      minLat: number;
+      maxLat: number;
+    } | null;
+  }> => {
+    const response = await apiClient.get('/partner/analytics/heatmap', { params });
+    return response.data;
+  },
+
   getSupportTickets: async (params?: {
     status?: string;
     page?: number;

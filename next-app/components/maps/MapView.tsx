@@ -42,6 +42,8 @@ export interface MapViewProps {
   className?: string;
   /** Callback when viewport changes */
   onMove?: (viewState: ViewState) => void;
+  /** Callback when map is clicked */
+  onClick?: (event: any) => void;
   /** Children (markers, routes, etc.) */
   children?: React.ReactNode;
   /** Whether map is interactive */
@@ -67,6 +69,7 @@ export function MapView({
   width = '100%',
   className,
   onMove,
+  onClick,
   children,
   interactive = true,
   mapRef: externalMapRef,
@@ -189,6 +192,7 @@ export function MapView({
         ref={mapRef}
         {...viewState}
         onMove={handleMove}
+        onClick={onClick}
         onLoad={handleMapLoad}
         mapboxAccessToken={accessToken}
         style={{ width: '100%', height: '100%' }}
