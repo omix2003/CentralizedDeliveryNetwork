@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Search, Building2, CheckCircle, XCircle, ExternalLink, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { adminApi, Partner } from '@/lib/api/admin';
+import { getImageUrl } from '@/lib/utils/imageUrl';
 
 export default function PartnersManagementPage() {
   const router = useRouter();
@@ -155,7 +156,7 @@ export default function PartnersManagementPage() {
                             <div className="relative">
                               {partner.user.profilePicture ? (
                                 <img
-                                  src={partner.user.profilePicture.startsWith('http') ? partner.user.profilePicture : `http://localhost:5000${partner.user.profilePicture}`}
+                                  src={getImageUrl(partner.user.profilePicture) || ''}
                                   alt={partner.companyName}
                                   className="w-10 h-10 rounded-full object-cover border-2 border-gray-200"
                                   onError={(e) => {
@@ -180,7 +181,7 @@ export default function PartnersManagementPage() {
                             <div className="relative">
                               {partner.user.profilePicture ? (
                                 <img
-                                  src={partner.user.profilePicture.startsWith('http') ? partner.user.profilePicture : `http://localhost:5000${partner.user.profilePicture}`}
+                                  src={getImageUrl(partner.user.profilePicture) || ''}
                                   alt={partner.user.name}
                                   className="w-8 h-8 rounded-full object-cover border border-gray-200"
                                   onError={(e) => {

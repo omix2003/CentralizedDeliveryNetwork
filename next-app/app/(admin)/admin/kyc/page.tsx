@@ -18,6 +18,7 @@ import {
 import { adminApi } from '@/lib/api/admin';
 import { format } from 'date-fns';
 import { useRouter } from 'next/navigation';
+import { getBackendBaseUrl } from '@/lib/utils/imageUrl';
 import { Skeleton } from '@/components/ui/Skeleton';
 
 interface Document {
@@ -164,7 +165,7 @@ export default function KYCVerificationPage() {
       return fileUrl;
     }
     // Otherwise, prepend the backend URL
-    const backendUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:5000';
+    const backendUrl = getBackendBaseUrl();
     return `${backendUrl}${fileUrl}`;
   };
 

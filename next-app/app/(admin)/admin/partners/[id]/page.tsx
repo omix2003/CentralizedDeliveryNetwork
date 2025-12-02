@@ -7,6 +7,7 @@ import { ArrowLeft, Building2, Package, CheckCircle, XCircle, Trash2 } from 'luc
 import { useRouter, useParams } from 'next/navigation';
 import { adminApi } from '@/lib/api/admin';
 import { format } from 'date-fns';
+import { getImageUrl } from '@/lib/utils/imageUrl';
 
 export default function PartnerDetailsPage() {
   const router = useRouter();
@@ -89,7 +90,7 @@ export default function PartnerDetailsPage() {
           <div className="relative">
             {partner.user.profilePicture ? (
               <img
-                src={partner.user.profilePicture.startsWith('http') ? partner.user.profilePicture : `http://localhost:5000${partner.user.profilePicture}`}
+                src={getImageUrl(partner.user.profilePicture) || ''}
                 alt={partner.companyName}
                 className="w-16 h-16 rounded-full object-cover border-4 border-gray-200"
                 onError={(e) => {

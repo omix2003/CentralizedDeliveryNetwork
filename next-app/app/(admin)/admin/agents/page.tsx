@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Search, Filter, CheckCircle, XCircle, Ban, UserCheck, UserX, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { adminApi, Agent } from '@/lib/api/admin';
+import { getImageUrl } from '@/lib/utils/imageUrl';
 
 export default function AgentsManagementPage() {
   const router = useRouter();
@@ -212,7 +213,7 @@ export default function AgentsManagementPage() {
                             <div className="relative">
                               {agent.user.profilePicture ? (
                                 <img
-                                  src={agent.user.profilePicture.startsWith('http') ? agent.user.profilePicture : `http://localhost:5000${agent.user.profilePicture}`}
+                                  src={getImageUrl(agent.user.profilePicture) || ''}
                                   alt={agent.user.name}
                                   className="w-10 h-10 rounded-full object-cover border-2 border-gray-200"
                                   onError={(e) => {

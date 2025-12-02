@@ -7,6 +7,7 @@ import { ArrowLeft, CheckCircle, XCircle, Ban, UserCheck, UserX, Package, Star, 
 import { useRouter, useParams } from 'next/navigation';
 import { adminApi } from '@/lib/api/admin';
 import { format } from 'date-fns';
+import { getImageUrl } from '@/lib/utils/imageUrl';
 
 export default function AgentDetailsPage() {
   const router = useRouter();
@@ -121,7 +122,7 @@ export default function AgentDetailsPage() {
           <div className="relative">
             {agent.user.profilePicture ? (
               <img
-                src={agent.user.profilePicture.startsWith('http') ? agent.user.profilePicture : `http://localhost:5000${agent.user.profilePicture}`}
+                src={getImageUrl(agent.user.profilePicture) || ''}
                 alt={agent.user.name}
                 className="w-16 h-16 rounded-full object-cover border-4 border-gray-200"
                 onError={(e) => {
