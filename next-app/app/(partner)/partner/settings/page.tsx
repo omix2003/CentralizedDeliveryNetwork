@@ -6,10 +6,12 @@ import { Button } from '@/components/ui/Button';
 import { partnerApi } from '@/lib/api/partner';
 import { Settings, Key, Webhook, CheckCircle, AlertCircle, Copy, Eye, EyeOff } from 'lucide-react';
 import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 import { ProfilePictureUpload } from '@/components/user/ProfilePictureUpload';
 
 export default function PartnerSettingsPage() {
-  const { data: session } = useSession();
+  const { data: session, update } = useSession();
+  const router = useRouter();
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -94,8 +96,11 @@ export default function PartnerSettingsPage() {
           <div className="flex justify-center">
             <ProfilePictureUpload
               currentImageUrl={session?.user?.image}
-              onUploadComplete={(url) => {
-                window.location.reload();
+              onUploadComplete={async (url) => {
+                // Update session to get the new profile picture
+                await update();
+                // Refresh router to update any cached data
+                router.refresh();
               }}
             />
           </div>

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { StatusBadge, Badge } from '@/components/ui/Badge';
 import { agentApi, AgentProfile, AgentDocument } from '@/lib/api/agent';
 import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 import {
   User,
   MapPin,
@@ -28,7 +29,8 @@ const DOCUMENT_TYPES = [
 ] as const;
 
 export default function AgentProfilePage() {
-  const { data: session } = useSession();
+  const { data: session, update } = useSession();
+  const router = useRouter();
   const [profile, setProfile] = useState<AgentProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState<string | null>(null);
@@ -248,8 +250,11 @@ export default function AgentProfilePage() {
           <div className="mb-6 flex justify-center">
             <ProfilePictureUpload
               currentImageUrl={session?.user?.image}
-              onUploadComplete={(url) => {
-                window.location.reload();
+              onUploadComplete={async (url) => {
+                // Update session to get the new profile picture
+                await update();
+                // Refresh router to update any cached data
+                router.refresh();
               }}
             />
           </div>

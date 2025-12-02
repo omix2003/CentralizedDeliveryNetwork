@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '../ui/Button';
 import { Camera, Loader2, Upload } from 'lucide-react';
 import Image from 'next/image';
@@ -19,6 +19,11 @@ export const ProfilePictureUpload: React.FC<ProfilePictureUploadProps> = ({
     const [isUploading, setIsUploading] = useState(false);
     const [previewUrl, setPreviewUrl] = useState<string | null>(currentImageUrl || null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Sync previewUrl with currentImageUrl prop when it changes
+    useEffect(() => {
+        setPreviewUrl(currentImageUrl || null);
+    }, [currentImageUrl]);
 
     const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -44,6 +49,12 @@ export const ProfilePictureUpload: React.FC<ProfilePictureUploadProps> = ({
                 imageUrl = `${backendUrl}${result.url}`;
             }
             
+            // Update preview immediately with the new URL
+            setPreviewUrl(imageUrl);
+            
+            // Clean up the object URL since we're using the uploaded URL now
+            URL.revokeObjectURL(objectUrl);
+            
             if (onUploadComplete) {
                 onUploadComplete(imageUrl);
             }
@@ -51,8 +62,16 @@ export const ProfilePictureUpload: React.FC<ProfilePictureUploadProps> = ({
             console.error('Error uploading image:', error);
             const errorMessage = error?.message || 'Failed to upload profile picture. Please try again.';
             alert(errorMessage);
+            // Revert to original image on error
+            setPreviewUrl(currentImageUrl || null);
+            // Clean up the object URL on error
+            URL.revokeObjectURL(objectUrl);
         } finally {
             setIsUploading(false);
+            // Reset file input so the same file can be selected again if needed
+            if (fileInputRef.current) {
+                fileInputRef.current.value = '';
+            }
         }
     };
 
