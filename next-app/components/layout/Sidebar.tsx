@@ -63,8 +63,21 @@ export function Sidebar({ role, userEmail, userName }: SidebarProps) {
 
   const handleSignOut = async () => {
     try {
+      // Broadcast sign out to all tabs before signing out
+      // This ensures other tabs know about the logout immediately
+      if (typeof window !== 'undefined') {
+        // Broadcast to other tabs via localStorage
+        localStorage.setItem('nextauth.message', JSON.stringify({
+          event: 'session',
+          data: 'signout',
+          timestamp: Date.now()
+        }));
+        
+        // Also broadcast via postMessage for same-origin tabs
+        window.postMessage({ type: 'NEXT_AUTH_SIGN_OUT' }, window.location.origin);
+      }
+
       // Sign out and redirect to login page
-      // NextAuth will automatically sync this across all tabs via storage events
       await signOut({ 
         redirect: true,
         callbackUrl: '/login'
@@ -73,6 +86,7 @@ export function Sidebar({ role, userEmail, userName }: SidebarProps) {
       console.error('Error signing out:', error);
       // Force redirect even if signOut fails
       router.push('/login');
+      window.location.href = '/login';
     }
   };
   
