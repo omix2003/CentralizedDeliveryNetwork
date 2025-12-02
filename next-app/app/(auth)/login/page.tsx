@@ -21,14 +21,6 @@ function getRoleDashboard(role: 'AGENT' | 'PARTNER' | 'ADMIN'): string {
 }
 
 function LoginForm() {
-  // Set tab ID when login page loads
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      // Generate new tab ID for this tab
-      const tabId = `tab_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-      sessionStorage.setItem('tab_id', tabId);
-    }
-  }, []);
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get('callbackUrl');
@@ -66,12 +58,6 @@ function LoginForm() {
     setError('');
 
     try {
-      // Mark this tab as the owner of the session before signing in
-      if (typeof window !== 'undefined') {
-        const tabId = sessionStorage.getItem('tab_id') || `tab_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-        sessionStorage.setItem('tab_id', tabId);
-      }
-
       const result = await signIn('credentials', {
         email,
         password,
