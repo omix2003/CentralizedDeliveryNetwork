@@ -45,13 +45,12 @@ export const ProfilePictureUpload: React.FC<ProfilePictureUploadProps> = ({
             if (imageUrl && !uploadedUrl) {
                 setUploadedUrl(imageUrl);
             }
-            // Debug log in development
-            if (process.env.NODE_ENV === 'development') {
-                console.log('[ProfilePictureUpload] Image URL initialized:', {
-                    currentImageUrl,
-                    normalized: imageUrl,
-                });
-            }
+            // Debug log (both dev and production for troubleshooting)
+            console.log('[ProfilePictureUpload] Image URL initialized:', {
+                currentImageUrl,
+                normalized: imageUrl,
+                nodeEnv: process.env.NODE_ENV,
+            });
         } else if (!isUploadingRef.current && !currentImageUrl) {
             // Clear preview if no image URL
             setPreviewUrl(null);
@@ -134,48 +133,65 @@ export const ProfilePictureUpload: React.FC<ProfilePictureUploadProps> = ({
     // Determine what to display
     const displayUrl = previewUrl || normalizeImageUrl(currentImageUrl);
     
-    // Check if URL is external (needs unoptimized)
+    // Check if URL is external (from backend server)
     const isExternalUrl = displayUrl ? (
         displayUrl.startsWith('http://') || 
         displayUrl.startsWith('https://') || 
         displayUrl.startsWith('blob:')
     ) : false;
+    
+    // For external URLs, always use regular img tag to avoid Next.js Image optimization issues
+    // This is especially important in production where CORS and proxy issues can occur
+    const useRegularImg = isExternalUrl && !displayUrl?.startsWith('blob:');
 
     return (
         <div className="flex flex-col items-center gap-4">
             <div className="relative group">
                 <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-white shadow-lg bg-slate-100 dark:bg-slate-800">
-                    {displayUrl && !imageError ? (
-                        <Image
-                            src={displayUrl}
-                            alt="Profile"
-                            width={128}
-                            height={128}
-                            className="w-full h-full object-cover"
-                            unoptimized={isExternalUrl}
-                            onError={(e) => {
-                                console.error('[ProfilePictureUpload] Image load error:', {
-                                    src: displayUrl,
-                                    error: e,
-                                    isExternal: isExternalUrl,
-                                });
-                                setImageError(true);
-                                // Fallback if image fails to load
-                                setPreviewUrl(null);
-                            }}
-                        />
-                    ) : imageError && displayUrl ? (
-                        // Fallback to regular img tag if Next.js Image fails
-                        <img
-                            src={displayUrl}
-                            alt="Profile"
-                            className="w-full h-full object-cover"
-                            onError={() => {
-                                console.error('[ProfilePictureUpload] Fallback img also failed:', displayUrl);
-                                setImageError(false);
-                                setPreviewUrl(null);
-                            }}
-                        />
+                    {displayUrl ? (
+                        useRegularImg ? (
+                            // Use regular img tag for external backend images (more reliable in production)
+                            <img
+                                src={displayUrl}
+                                alt="Profile"
+                                width={128}
+                                height={128}
+                                className="w-full h-full object-cover"
+                                crossOrigin="anonymous"
+                                onError={(e) => {
+                                    console.error('[ProfilePictureUpload] Image load error:', {
+                                        src: displayUrl,
+                                        error: e,
+                                        url: displayUrl,
+                                    });
+                                    setImageError(true);
+                                }}
+                                onLoad={() => {
+                                    // Reset error state on successful load
+                                    setImageError(false);
+                                }}
+                            />
+                        ) : (
+                            // Use Next.js Image for blob URLs and relative paths
+                            <Image
+                                src={displayUrl}
+                                alt="Profile"
+                                width={128}
+                                height={128}
+                                className="w-full h-full object-cover"
+                                unoptimized={true}
+                                onError={(e) => {
+                                    console.error('[ProfilePictureUpload] Image load error:', {
+                                        src: displayUrl,
+                                        error: e,
+                                    });
+                                    setImageError(true);
+                                }}
+                                onLoad={() => {
+                                    setImageError(false);
+                                }}
+                            />
+                        )
                     ) : (
                         <div className="w-full h-full flex items-center justify-center text-slate-400">
                             <Camera className="w-12 h-12" />

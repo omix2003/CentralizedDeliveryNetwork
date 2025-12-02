@@ -46,15 +46,15 @@ export function getImageUrl(imagePath: string | null | undefined): string | null
   const backendUrl = getBackendBaseUrl();
   const fullUrl = `${backendUrl}${normalizedPath}`;
   
-  // Log in development for debugging
-  if (process.env.NODE_ENV === 'development') {
-    console.log('[getImageUrl]', {
-      imagePath,
-      backendUrl,
-      fullUrl,
-      hasApiUrl: !!process.env.NEXT_PUBLIC_API_URL,
-    });
-  }
+  // Log for debugging (both dev and production)
+  console.log('[getImageUrl]', {
+    imagePath,
+    backendUrl,
+    fullUrl,
+    hasApiUrl: !!process.env.NEXT_PUBLIC_API_URL,
+    apiUrl: process.env.NEXT_PUBLIC_API_URL,
+    nodeEnv: process.env.NODE_ENV,
+  });
   
   return fullUrl;
 }
