@@ -2,7 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../lib/prisma';
 import { getPartnerId, getUserId } from '../utils/role.util';
 import { notifyPartner } from '../lib/webhook';
-import { OrderStatus } from '@prisma/client';
+import { OrderStatus, EventType, ActorType } from '@prisma/client';
+import { eventService } from '../services/event.service';
 
 export const partnerController = {
   // GET /api/partner/profile
@@ -94,6 +95,14 @@ export const partnerController = {
         },
       });
 
+      // Log API key regeneration event
+      eventService.logPartnerEvent(
+        EventType.ORDER_CREATED, // We'll need to add a new event type, but using existing for now
+        partnerId,
+        partner.user.id,
+        { action: 'API_KEY_REGENERATED' }
+      );
+
       res.json({
         id: partner.id,
         apiKey: partner.apiKey,
@@ -154,12 +163,27 @@ export const partnerController = {
               user: {
                 select: {
                   name: true,
+                  id: true,
                 },
               },
             },
           },
         },
       });
+
+      // Log order creation event
+      eventService.logOrderEvent(
+        EventType.ORDER_CREATED,
+        order.id,
+        ActorType.PARTNER,
+        order.partner.user.id,
+        {
+          partnerId,
+          payoutAmount,
+          priority,
+          estimatedDuration,
+        }
+      );
 
       // Trigger order assignment engine (Phase 5)
       // This will find nearby agents and offer the order to them

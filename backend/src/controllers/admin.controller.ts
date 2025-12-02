@@ -1,7 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../lib/prisma';
 import { redisGeo, getRedisClient, isRedisConnected } from '../lib/redis';
-import { OrderStatus, AgentStatus } from '@prisma/client';
+import { OrderStatus, AgentStatus, EventType, ActorType } from '@prisma/client';
+import { eventService } from '../services/event.service';
+import { getUserId } from '../utils/role.util';
 
 export const adminController = {
   // ==================== METRICS ====================
@@ -347,12 +349,27 @@ export const adminController = {
         include: {
           user: {
             select: {
+              id: true,
               name: true,
               email: true,
             },
           },
         },
       });
+
+      // Log agent approval event
+      const userId = getUserId(req);
+      await eventService.logAdminEvent(
+        EventType.AGENT_ONLINE, // Using existing event type, metadata will clarify it's approval
+        userId,
+        'AGENT',
+        id,
+        {
+          action: 'AGENT_APPROVED',
+          agentId: id,
+          agentName: agent.user.name,
+        }
+      );
 
       res.json({
         message: 'Agent approved successfully',
@@ -379,12 +396,28 @@ export const adminController = {
         include: {
           user: {
             select: {
+              id: true,
               name: true,
               email: true,
             },
           },
         },
       });
+
+      // Log agent blocking event
+      const userId = getUserId(req);
+      await eventService.logAdminEvent(
+        EventType.AGENT_OFFLINE, // Using existing event type, metadata will clarify it's blocking
+        userId,
+        'AGENT',
+        id,
+        {
+          action: 'AGENT_BLOCKED',
+          agentId: id,
+          agentName: agent.user.name,
+          reason: reason || 'Blocked by admin',
+        }
+      );
 
       // Remove agent location from Redis
       await redisGeo.removeAgentLocation(id);
@@ -593,12 +626,27 @@ export const adminController = {
         include: {
           user: {
             select: {
+              id: true,
               name: true,
               email: true,
             },
           },
         },
       });
+
+      // Log agent unblocking event
+      const userId = getUserId(req);
+      await eventService.logAdminEvent(
+        EventType.AGENT_ONLINE, // Using existing event type, metadata will clarify it's unblocking
+        userId,
+        'AGENT',
+        id,
+        {
+          action: 'AGENT_UNBLOCKED',
+          agentId: id,
+          agentName: agent.user.name,
+        }
+      );
 
       res.json({
         message: 'Agent unblocked successfully',
@@ -1163,6 +1211,21 @@ export const adminController = {
           },
         },
       });
+
+      // Log order reassignment event
+      const userId = getUserId(req);
+      await eventService.logAdminEvent(
+        EventType.ORDER_ASSIGNED,
+        userId,
+        'ORDER',
+        id,
+        {
+          action: 'ORDER_REASSIGNED',
+          previousAgentId: order.agentId,
+          newAgentId: agentId || null,
+          orderId: id,
+        }
+      );
 
       res.json({
         message: agentId ? 'Order reassigned successfully' : 'Order set to searching for new agent',

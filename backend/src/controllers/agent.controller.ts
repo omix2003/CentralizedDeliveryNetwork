@@ -3,6 +3,8 @@ import { prisma } from '../lib/prisma';
 import { getAgentId, getUserId, isAdmin } from '../utils/role.util';
 import { redisGeo } from '../lib/redis';
 import { notifyPartner } from '../lib/webhook';
+import { EventType, ActorType } from '@prisma/client';
+import { eventService } from '../services/event.service';
 import path from 'path';
 import fs from 'fs';
 
@@ -157,6 +159,18 @@ export const agentController = {
         data: { lastOnlineAt: new Date() },
       });
 
+      // Log location update event (throttled - only log every 30 seconds to avoid spam)
+      const userId = getUserId(req);
+      eventService.logAgentEvent(
+        EventType.AGENT_LOCATION_UPDATE,
+        agentId,
+        userId,
+        {
+          latitude,
+          longitude,
+        }
+      );
+
       res.json({ message: 'Location updated successfully' });
     } catch (error) {
       next(error);
@@ -207,7 +221,27 @@ export const agentController = {
       const agent = await prisma.agent.update({
         where: { id: agentId },
         data: updateData,
+        include: {
+          user: {
+            select: {
+              id: true,
+            },
+          },
+        },
       });
+
+      // Log agent status change event
+      const userId = agent.user.id;
+      const eventType = status === 'ONLINE' ? EventType.AGENT_ONLINE : EventType.AGENT_OFFLINE;
+      eventService.logAgentEvent(
+        eventType,
+        agentId,
+        userId,
+        {
+          previousStatus: agent.status === 'ONLINE' ? 'OFFLINE' : 'ONLINE',
+          newStatus: status,
+        }
+      );
 
       res.json({
         id: agent.id,
@@ -415,6 +449,20 @@ export const agentController = {
         }
       );
 
+      // Log order acceptance event
+      const userId = getUserId(req);
+      eventService.logOrderEvent(
+        EventType.ORDER_ACCEPTED,
+        orderId,
+        ActorType.AGENT,
+        userId,
+        {
+          agentId,
+          partnerId: updatedOrder.partnerId,
+          payoutAmount: updatedOrder.payoutAmount,
+        }
+      );
+
       res.json({
         id: updatedOrder.id,
         status: updatedOrder.status,
@@ -434,6 +482,22 @@ export const agentController = {
       const agentId = getAgentId(req);
       if (!agentId) {
         return res.status(404).json({ error: 'Agent profile not found' });
+      }
+
+      const orderId = req.params.id;
+      const userId = getUserId(req);
+
+      // Log order rejection event
+      if (orderId) {
+        eventService.logOrderEvent(
+          EventType.ORDER_REJECTED,
+          orderId,
+          ActorType.AGENT,
+          userId,
+          {
+            agentId,
+          }
+        );
       }
 
       // For now, rejection just means not accepting
@@ -683,6 +747,40 @@ export const agentController = {
           pickedUpAt: updatedOrder.pickedUpAt,
           deliveredAt: updatedOrder.deliveredAt,
           cancelledAt: updatedOrder.cancelledAt,
+          cancellationReason: updatedOrder.cancellationReason,
+        }
+      );
+
+      // Log order status update event
+      const userId = getUserId(req);
+      let eventType: EventType;
+      switch (status) {
+        case 'PICKED_UP':
+          eventType = EventType.ORDER_PICKED_UP;
+          break;
+        case 'OUT_FOR_DELIVERY':
+          eventType = EventType.ORDER_OUT_FOR_DELIVERY;
+          break;
+        case 'DELIVERED':
+          eventType = EventType.ORDER_DELIVERED;
+          break;
+        case 'CANCELLED':
+          eventType = EventType.ORDER_CANCELLED;
+          break;
+        default:
+          eventType = EventType.ORDER_ASSIGNED;
+      }
+      
+      eventService.logOrderEvent(
+        eventType,
+        orderId,
+        ActorType.AGENT,
+        userId,
+        {
+          agentId,
+          previousStatus: order.status,
+          newStatus: status,
+          actualDuration: updatedOrder.actualDuration,
           cancellationReason: updatedOrder.cancellationReason,
         }
       );

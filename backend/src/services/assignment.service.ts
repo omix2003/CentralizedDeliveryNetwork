@@ -493,6 +493,20 @@ async function assignOrderToAgent(
     // Send FCM notification to agent
     await sendOrderAssignedNotification(agentId, orderId);
 
+    // Log order assignment event (system-assigned)
+    const { eventService } = await import('./event.service');
+    const { EventType, ActorType } = await import('@prisma/client');
+    await eventService.logOrderEvent(
+      EventType.ORDER_ASSIGNED,
+      orderId,
+      ActorType.SYSTEM,
+      undefined,
+      {
+        agentId,
+        autoAssigned: true,
+      }
+    );
+
     return { success: true, order: result };
   } catch (error: any) {
     console.error('[Assignment] Error assigning order:', error);
