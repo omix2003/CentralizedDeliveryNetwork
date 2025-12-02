@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { authService } from '../services/auth.service';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../lib/prisma';
+import fs from 'fs';
 
 export const authController = {
   async register(req:Request, res:Response, next:NextFunction){
@@ -123,7 +124,48 @@ export const authController = {
     }catch(error){
       next(error);
     }
-  }
+  },
+
+  // POST /api/auth/profile-picture - Upload profile picture
+  async uploadProfilePicture(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ error: 'No file uploaded' });
+      }
+
+      // Generate file URL (relative to /uploads/profiles/)
+      const fileUrl = `/uploads/profiles/${req.file.filename}`;
+
+      // Update user profile picture
+      const user = await prisma.user.update({
+        where: { id: req.user.id },
+        data: { profilePicture: fileUrl },
+        select: {
+          id: true,
+          profilePicture: true,
+        },
+      });
+
+      res.json({
+        url: fileUrl,
+        message: 'Profile picture uploaded successfully',
+      });
+    } catch (error) {
+      // Clean up uploaded file if there's an error
+      if (req.file && req.file.path) {
+        try {
+          fs.unlinkSync(req.file.path);
+        } catch (unlinkError) {
+          console.error('Error deleting file:', unlinkError);
+        }
+      }
+      next(error);
+    }
+  },
 
 };
 
