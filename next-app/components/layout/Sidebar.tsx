@@ -16,6 +16,7 @@ import {
   FileCheck,
 } from 'lucide-react';
 import { signOut } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 
 interface NavItem {
   label: string;
@@ -58,6 +59,22 @@ const adminNavItems: NavItem[] = [
 
 export function Sidebar({ role, userEmail, userName }: SidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  const handleSignOut = async () => {
+    try {
+      // Sign out and redirect to login page
+      // NextAuth will automatically sync this across all tabs via storage events
+      await signOut({ 
+        redirect: true,
+        callbackUrl: '/login'
+      });
+    } catch (error) {
+      console.error('Error signing out:', error);
+      // Force redirect even if signOut fails
+      router.push('/login');
+    }
+  };
   
   const navItems = 
     role === 'AGENT' ? agentNavItems :
@@ -118,7 +135,7 @@ export function Sidebar({ role, userEmail, userName }: SidebarProps) {
           </div>
         )}
         <button
-          onClick={() => signOut()}
+          onClick={handleSignOut}
           className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
         >
           <LogOut className="h-5 w-5 text-gray-500" />
