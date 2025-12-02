@@ -19,11 +19,29 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const maxReconnectAttempts = 5;
+  // Store callbacks in refs to prevent unnecessary reconnections
+  const callbacksRef = useRef({ onConnect, onDisconnect, onError });
+  
+  // Update callbacks ref when they change
+  useEffect(() => {
+    callbacksRef.current = { onConnect, onDisconnect, onError };
+  }, [onConnect, onDisconnect, onError]);
 
   const getWebSocketURL = useCallback(() => {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
-    // Remove /api and add /socket.io
-    return apiUrl.replace('/api', '');
+    // Remove /api to get base URL
+    let baseUrl = apiUrl.replace('/api', '');
+    
+    // Ensure we use the correct protocol (wss for https, ws for http)
+    // Socket.io handles this automatically, but we need to ensure the URL is correct
+    if (baseUrl.startsWith('https://')) {
+      // Socket.io will automatically use wss:// for secure connections
+      baseUrl = baseUrl.replace('https://', 'https://');
+    } else if (baseUrl.startsWith('http://')) {
+      baseUrl = baseUrl.replace('http://', 'http://');
+    }
+    
+    return baseUrl;
   }, []);
 
   const connect = useCallback(() => {
@@ -42,7 +60,10 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
 
     setStatus('connecting');
 
-    const socket = io(getWebSocketURL(), {
+    const wsUrl = getWebSocketURL();
+    console.log('[WebSocket] Connecting to:', wsUrl);
+    
+    const socket = io(wsUrl, {
       path: '/socket.io',
       auth: {
         token: session.accessToken,
@@ -52,25 +73,31 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
       reconnectionAttempts: maxReconnectAttempts,
+      // Add extra options for production
+      upgrade: true,
+      rememberUpgrade: false,
     });
 
     socket.on('connect', () => {
       console.log('[WebSocket] Connected');
       setStatus('connected');
       reconnectAttemptsRef.current = 0;
-      onConnect?.();
+      callbacksRef.current.onConnect?.();
     });
 
     socket.on('disconnect', (reason) => {
       console.log('[WebSocket] Disconnected:', reason);
       setStatus('disconnected');
-      onDisconnect?.();
+      callbacksRef.current.onDisconnect?.();
 
-      // Attempt manual reconnection if not intentional
-      if (reason !== 'io client disconnect' && reconnectAttemptsRef.current < maxReconnectAttempts) {
+      // Attempt manual reconnection if not intentional and still enabled
+      if (reason !== 'io client disconnect' && enabled && reconnectAttemptsRef.current < maxReconnectAttempts) {
         reconnectAttemptsRef.current++;
         reconnectTimeoutRef.current = setTimeout(() => {
-          connect();
+          // Check if still enabled before reconnecting
+          if (enabled && session?.accessToken) {
+            connect();
+          }
         }, Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 5000));
       }
     });
@@ -78,16 +105,16 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     socket.on('connect_error', (error) => {
       console.error('[WebSocket] Connection error:', error);
       setStatus('error');
-      onError?.(error);
+      callbacksRef.current.onError?.(error);
     });
 
     socket.on('error', (error) => {
       console.error('[WebSocket] Error:', error);
-      onError?.(new Error(error.message || 'WebSocket error'));
+      callbacksRef.current.onError?.(new Error(error.message || 'WebSocket error'));
     });
 
     socketRef.current = socket;
-  }, [enabled, session?.accessToken, getWebSocketURL, onConnect, onDisconnect, onError]);
+  }, [enabled, session?.accessToken, getWebSocketURL]);
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
@@ -137,7 +164,8 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     return () => {
       disconnect();
     };
-  }, [enabled, session?.accessToken, connect, disconnect]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, session?.accessToken]);
 
   return {
     socket: socketRef.current,
@@ -150,6 +178,8 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     off,
   };
 }
+
+
 
 
 
