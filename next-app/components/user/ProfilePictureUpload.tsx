@@ -4,6 +4,7 @@ import React, { useState, useRef } from 'react';
 import { Button } from '../ui/Button';
 import { Camera, Loader2, Upload } from 'lucide-react';
 import Image from 'next/image';
+import { authApi } from '@/lib/api/auth';
 
 interface ProfilePictureUploadProps {
     currentImageUrl?: string | null;
@@ -32,22 +33,23 @@ export const ProfilePictureUpload: React.FC<ProfilePictureUploadProps> = ({
         formData.append('file', file);
 
         try {
-            const response = await fetch('/api/user/profile-picture', {
-                method: 'POST',
-                body: formData,
-            });
-
-            if (!response.ok) {
-                throw new Error('Upload failed');
+            const result = await authApi.uploadProfilePicture(file);
+            
+            // Construct full URL if it's a relative path (backend upload)
+            let imageUrl = result.url;
+            if (imageUrl.startsWith('/uploads/')) {
+                // Use backend API URL for serving images
+                const backendUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:5000';
+                imageUrl = `${backendUrl}${result.url}`;
             }
-
-            const data = await response.json();
+            
             if (onUploadComplete) {
-                onUploadComplete(data.url);
+                onUploadComplete(imageUrl);
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error uploading image:', error);
-            alert('Failed to upload profile picture');
+            const errorMessage = error?.message || 'Failed to upload profile picture. Please try again.';
+            alert(errorMessage);
         } finally {
             setIsUploading(false);
         }

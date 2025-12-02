@@ -163,16 +163,26 @@ export function GooglePlacesAutocomplete({
     }
 
     // Load Google Maps script with proper async loading
+    // Note: You may see "ERR_BLOCKED_BY_CLIENT" for gen_204 endpoint in console.
+    // This is Google Maps' CSP test endpoint and is often blocked by ad blockers.
+    // It's non-critical and doesn't affect functionality.
     const script = document.createElement('script');
     script.src = `https://maps.googleapis.com/maps/api/js?key=${googleApiKey}&libraries=places&loading=async`;
     script.async = true;
     script.defer = true;
     script.setAttribute('loading', 'async');
     script.onload = () => {
-      initializeAutocomplete();
+      // Wait a bit for Google Maps to fully initialize
+      setTimeout(() => {
+        if (window.google?.maps?.places) {
+          initializeAutocomplete();
+        } else {
+          setError('Google Maps loaded but Places API is not available. Please check your API key configuration.');
+        }
+      }, 100);
     };
     script.onerror = () => {
-      setError('Failed to load Google Maps. Please check your API key.');
+      setError('Failed to load Google Maps. Please check your API key and ensure NEXT_PUBLIC_GOOGLE_MAPS_API_KEY is set correctly in Netlify environment variables.');
     };
     document.head.appendChild(script);
 
