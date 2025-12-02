@@ -1,13 +1,29 @@
 /**
  * Get the backend base URL (without /api) for serving static files like images
+ * Works in both client and server contexts
  */
 export function getBackendBaseUrl(): string {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+  // Try to get API URL from environment (works in both client and server)
+  let apiUrl = process.env.NEXT_PUBLIC_API_URL;
+  
+  // Fallback for server-side if NEXT_PUBLIC_API_URL is not available
+  if (!apiUrl && typeof window === 'undefined') {
+    // Server-side: try to get from process.env directly
+    apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+  }
+  
+  // Final fallback
+  if (!apiUrl) {
+    apiUrl = 'http://localhost:5000/api';
+  }
+  
   // Remove /api suffix if present
   if (apiUrl.endsWith('/api')) {
     return apiUrl.slice(0, -4);
   }
-  return apiUrl.replace(/\/api$/, '');
+  
+  // Ensure no trailing slash
+  return apiUrl.replace(/\/api$/, '').replace(/\/$/, '');
 }
 
 /**
@@ -23,8 +39,23 @@ export function getImageUrl(imagePath: string | null | undefined): string | null
     return imagePath;
   }
   
+  // Ensure imagePath starts with /
+  const normalizedPath = imagePath.startsWith('/') ? imagePath : `/${imagePath}`;
+  
   // Otherwise, prepend the backend base URL
   const backendUrl = getBackendBaseUrl();
-  return `${backendUrl}${imagePath}`;
+  const fullUrl = `${backendUrl}${normalizedPath}`;
+  
+  // Log in development for debugging
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[getImageUrl]', {
+      imagePath,
+      backendUrl,
+      fullUrl,
+      hasApiUrl: !!process.env.NEXT_PUBLIC_API_URL,
+    });
+  }
+  
+  return fullUrl;
 }
 

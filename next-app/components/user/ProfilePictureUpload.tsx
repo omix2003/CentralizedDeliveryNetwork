@@ -19,6 +19,7 @@ export const ProfilePictureUpload: React.FC<ProfilePictureUploadProps> = ({
     const [isUploading, setIsUploading] = useState(false);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [uploadedUrl, setUploadedUrl] = useState<string | null>(null);
+    const [imageError, setImageError] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const isUploadingRef = useRef(false);
 
@@ -38,13 +39,23 @@ export const ProfilePictureUpload: React.FC<ProfilePictureUploadProps> = ({
         if (!isUploadingRef.current && currentImageUrl) {
             const imageUrl = normalizeImageUrl(currentImageUrl);
             setPreviewUrl(imageUrl);
+            // Reset image error when URL changes
+            setImageError(false);
             // If we have a current image and no uploaded URL, set uploaded URL too
             if (imageUrl && !uploadedUrl) {
                 setUploadedUrl(imageUrl);
             }
+            // Debug log in development
+            if (process.env.NODE_ENV === 'development') {
+                console.log('[ProfilePictureUpload] Image URL initialized:', {
+                    currentImageUrl,
+                    normalized: imageUrl,
+                });
+            }
         } else if (!isUploadingRef.current && !currentImageUrl) {
             // Clear preview if no image URL
             setPreviewUrl(null);
+            setImageError(false);
         }
     }, [currentImageUrl, normalizeImageUrl]);
 
@@ -134,7 +145,7 @@ export const ProfilePictureUpload: React.FC<ProfilePictureUploadProps> = ({
         <div className="flex flex-col items-center gap-4">
             <div className="relative group">
                 <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-white shadow-lg bg-slate-100 dark:bg-slate-800">
-                    {displayUrl ? (
+                    {displayUrl && !imageError ? (
                         <Image
                             src={displayUrl}
                             alt="Profile"
@@ -142,8 +153,26 @@ export const ProfilePictureUpload: React.FC<ProfilePictureUploadProps> = ({
                             height={128}
                             className="w-full h-full object-cover"
                             unoptimized={isExternalUrl}
-                            onError={() => {
+                            onError={(e) => {
+                                console.error('[ProfilePictureUpload] Image load error:', {
+                                    src: displayUrl,
+                                    error: e,
+                                    isExternal: isExternalUrl,
+                                });
+                                setImageError(true);
                                 // Fallback if image fails to load
+                                setPreviewUrl(null);
+                            }}
+                        />
+                    ) : imageError && displayUrl ? (
+                        // Fallback to regular img tag if Next.js Image fails
+                        <img
+                            src={displayUrl}
+                            alt="Profile"
+                            className="w-full h-full object-cover"
+                            onError={() => {
+                                console.error('[ProfilePictureUpload] Fallback img also failed:', displayUrl);
+                                setImageError(false);
                                 setPreviewUrl(null);
                             }}
                         />
