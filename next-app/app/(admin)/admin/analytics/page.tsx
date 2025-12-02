@@ -256,25 +256,21 @@ export default function AnalyticsPage() {
           title="Total Revenue"
           value={`$${analytics.summary.totalRevenue.toFixed(2)}`}
           icon={DollarSign}
-          trend={null}
         />
         <MetricCard
           title="Total Orders"
           value={analytics.summary.totalOrders.toLocaleString()}
           icon={Package}
-          trend={null}
         />
         <MetricCard
           title="Completion Rate"
           value={`${analytics.summary.completionRate.toFixed(1)}%`}
           icon={CheckCircle}
-          trend={null}
         />
         <MetricCard
           title="Avg Delivery Time"
           value={`${Math.round(analytics.summary.avgDeliveryTime)} min`}
           icon={Clock}
-          trend={null}
         />
       </div>
 
