@@ -5,6 +5,7 @@ import { Button } from '../ui/Button';
 import { Camera, Loader2, Upload } from 'lucide-react';
 import Image from 'next/image';
 import { authApi } from '@/lib/api/auth';
+import { getBackendBaseUrl } from '@/lib/utils/imageUrl';
 
 interface ProfilePictureUploadProps {
     currentImageUrl?: string | null;
@@ -39,7 +40,7 @@ export const ProfilePictureUpload: React.FC<ProfilePictureUploadProps> = ({
             let imageUrl = result.url;
             if (imageUrl.startsWith('/uploads/')) {
                 // Use backend API URL for serving images
-                const backendUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:5000';
+                const backendUrl = getBackendBaseUrl();
                 imageUrl = `${backendUrl}${result.url}`;
             }
             

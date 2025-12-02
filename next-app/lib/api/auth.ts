@@ -138,16 +138,16 @@ export const authApi = {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await client.post<{ url: string; message: string }>('/auth/profile-picture', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
+      // Don't set Content-Type header - let the browser set it with the proper boundary
+      // The API client interceptor already handles FormData correctly
+      const response = await client.post<{ url: string; message: string }>('/auth/profile-picture', formData);
       
       return { url: response.data.url };
     } catch (error: any) {
+      console.error('Profile picture upload error:', error);
       if (error.response) {
         const message = error.response.data?.error || error.response.data?.message || 'Profile picture upload failed';
+        console.error('Upload error response:', error.response.data);
         throw new Error(message);
       } else if (error.request) {
         throw new Error('Cannot connect to backend server. Please make sure it is running.');

@@ -129,16 +129,31 @@ export const authController = {
   // POST /api/auth/profile-picture - Upload profile picture
   async uploadProfilePicture(req: Request, res: Response, next: NextFunction) {
     try {
+      console.log('[Profile Upload] Request received');
+      console.log('[Profile Upload] Has user:', !!req.user);
+      console.log('[Profile Upload] Has file:', !!req.file);
+      console.log('[Profile Upload] File details:', req.file ? {
+        fieldname: req.file.fieldname,
+        originalname: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size,
+        filename: req.file.filename,
+        path: req.file.path,
+      } : null);
+
       if (!req.user) {
+        console.error('[Profile Upload] Unauthorized - no user');
         return res.status(401).json({ error: 'Unauthorized' });
       }
 
       if (!req.file) {
+        console.error('[Profile Upload] No file uploaded');
         return res.status(400).json({ error: 'No file uploaded' });
       }
 
       // Generate file URL (relative to /uploads/profiles/)
       const fileUrl = `/uploads/profiles/${req.file.filename}`;
+      console.log('[Profile Upload] Generated file URL:', fileUrl);
 
       // Update user profile picture
       const user = await prisma.user.update({
@@ -150,17 +165,24 @@ export const authController = {
         },
       });
 
+      console.log('[Profile Upload] Success - updated user profile picture:', user.id);
+
       res.json({
         url: fileUrl,
         message: 'Profile picture uploaded successfully',
       });
-    } catch (error) {
+    } catch (error: any) {
+      console.error('[Profile Upload] Error:', error);
+      console.error('[Profile Upload] Error message:', error?.message);
+      console.error('[Profile Upload] Error stack:', error?.stack);
+      
       // Clean up uploaded file if there's an error
       if (req.file && req.file.path) {
         try {
           fs.unlinkSync(req.file.path);
+          console.log('[Profile Upload] Cleaned up uploaded file');
         } catch (unlinkError) {
-          console.error('Error deleting file:', unlinkError);
+          console.error('[Profile Upload] Error deleting file:', unlinkError);
         }
       }
       next(error);
