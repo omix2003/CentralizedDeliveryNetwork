@@ -135,8 +135,8 @@ export default function SupportTicketDetailsPage() {
               <div>
                 <label className="text-sm font-medium text-gray-500">Status</label>
                 <div className="mt-1">
-                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${STATUS_COLORS[ticket.status]}`}>
-                    {ticket.status.replace('_', ' ')}
+                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${STATUS_COLORS[ticket.status as keyof typeof STATUS_COLORS] || STATUS_COLORS.OPEN}`}>
+                    {String(ticket.status).replace('_', ' ')}
                   </span>
                 </div>
               </div>

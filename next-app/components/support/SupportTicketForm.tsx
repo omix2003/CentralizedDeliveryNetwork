@@ -9,7 +9,7 @@ interface SupportTicketFormProps {
   orderId?: string;
   onSuccess?: () => void;
   onCancel?: () => void;
-  apiCall: (data: { orderId?: string; issueType: string; description: string }) => Promise<any>;
+  apiCall: (data: { orderId?: string; issueType: 'DELAY' | 'MISSING' | 'DAMAGE' | 'OTHER'; description: string }) => Promise<any>;
 }
 
 export function SupportTicketForm({ orderId, onSuccess, onCancel, apiCall }: SupportTicketFormProps) {
@@ -31,7 +31,7 @@ export function SupportTicketForm({ orderId, onSuccess, onCancel, apiCall }: Sup
       setLoading(true);
       await apiCall({
         orderId,
-        issueType,
+        issueType: issueType as 'DELAY' | 'MISSING' | 'DAMAGE' | 'OTHER',
         description: description.trim(),
       });
       
