@@ -80,7 +80,92 @@ export default function AnalyticsPage() {
     };
 
     if (format === 'csv') {
-      exportToCSV(exportData, getExportFilename('analytics', 'csv'));
+      // Convert object to array format for CSV export
+      // Create a flattened array with summary metrics and time series data
+      const csvData: any[] = [];
+      
+      // Add summary row
+      if (analytics.summary) {
+        csvData.push({
+          type: 'Summary',
+          metric: 'Total Orders',
+          value: analytics.summary.totalOrders || 0,
+        });
+        csvData.push({
+          type: 'Summary',
+          metric: 'Total Revenue',
+          value: analytics.summary.totalRevenue || 0,
+        });
+        csvData.push({
+          type: 'Summary',
+          metric: 'Active Agents',
+          value: analytics.summary.activeAgents || 0,
+        });
+        csvData.push({
+          type: 'Summary',
+          metric: 'Active Partners',
+          value: analytics.summary.activePartners || 0,
+        });
+      }
+      
+      // Add orders by day
+      if (analytics.ordersByDay && Array.isArray(analytics.ordersByDay)) {
+        analytics.ordersByDay.forEach((item: any) => {
+          csvData.push({
+            type: 'Orders by Day',
+            date: item.date || item.day || '',
+            value: item.count || item.orders || 0,
+          });
+        });
+      }
+      
+      // Add orders by status
+      if (analytics.ordersByStatus && Array.isArray(analytics.ordersByStatus)) {
+        analytics.ordersByStatus.forEach((item: any) => {
+          csvData.push({
+            type: 'Orders by Status',
+            status: item.status || '',
+            value: item.count || item.orders || 0,
+          });
+        });
+      }
+      
+      // Add revenue by day
+      if (analytics.revenueByDay && Array.isArray(analytics.revenueByDay)) {
+        analytics.revenueByDay.forEach((item: any) => {
+          csvData.push({
+            type: 'Revenue by Day',
+            date: item.date || item.day || '',
+            value: item.revenue || item.amount || 0,
+          });
+        });
+      }
+      
+      // Add top agents
+      if (analytics.topAgents && Array.isArray(analytics.topAgents)) {
+        analytics.topAgents.forEach((item: any, index: number) => {
+          csvData.push({
+            type: 'Top Agents',
+            rank: index + 1,
+            name: item.name || item.agentName || '',
+            value: item.orders || item.count || 0,
+          });
+        });
+      }
+      
+      // Add top partners
+      if (analytics.topPartners && Array.isArray(analytics.topPartners)) {
+        analytics.topPartners.forEach((item: any, index: number) => {
+          csvData.push({
+            type: 'Top Partners',
+            rank: index + 1,
+            name: item.name || item.companyName || '',
+            value: item.orders || item.count || 0,
+          });
+        });
+      }
+      
+      exportToCSV(csvData, getExportFilename('analytics', 'csv'));
     } else {
       exportToJSON(exportData, getExportFilename('analytics', 'json'));
     }
