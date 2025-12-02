@@ -1890,7 +1890,7 @@ export const adminController = {
 
       // Save admin notes when closing or resolving
       if ((status === 'CLOSED' || status === 'RESOLVED') && adminNotes) {
-        updateData.adminNotes = adminNotes;
+        (updateData as any).adminNotes = adminNotes;
       }
 
       const ticket = await prisma.supportTicket.update({
@@ -1964,8 +1964,8 @@ export const adminController = {
         data: {
           status: 'RESOLVED',
           resolvedAt: new Date(),
-          adminNotes: adminNotes || resolutionNotes || null,
-        },
+          adminNotes: (adminNotes || resolutionNotes || null) as string | null,
+        } as any,
         include: {
           user: {
             select: {
