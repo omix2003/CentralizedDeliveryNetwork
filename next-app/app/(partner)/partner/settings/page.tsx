@@ -19,6 +19,7 @@ export default function PartnerSettingsPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [webhookUrl, setWebhookUrl] = useState('');
   const [showApiKey, setShowApiKey] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
 
   useEffect(() => {
     loadProfile();
@@ -57,6 +58,26 @@ export default function PartnerSettingsPage() {
     navigator.clipboard.writeText(text);
     setSuccess('Copied to clipboard!');
     setTimeout(() => setSuccess(null), 2000);
+  };
+
+  const handleRegenerateApiKey = async () => {
+    if (!confirm('Are you sure you want to regenerate your API key? This will invalidate your current key and you will need to update all integrations using the old key.')) {
+      return;
+    }
+
+    try {
+      setRegenerating(true);
+      setError(null);
+      setSuccess(null);
+      const result = await partnerApi.regenerateApiKey();
+      setSuccess(result.message || 'API key regenerated successfully');
+      await loadProfile();
+      setShowApiKey(true); // Show the new key
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to regenerate API key');
+    } finally {
+      setRegenerating(false);
+    }
   };
 
   if (loading) {
@@ -153,10 +174,26 @@ export default function PartnerSettingsPage() {
                 </Button>
               </div>
             </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRegenerateApiKey}
+                disabled={regenerating}
+                className="text-orange-600 border-orange-300 hover:bg-orange-50"
+              >
+                {regenerating ? 'Regenerating...' : 'Regenerate API Key'}
+              </Button>
+            </div>
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <p className="text-sm text-blue-800">
                 <strong>How to use:</strong> Include this API key in the <code className="bg-blue-100 px-1 rounded">X-API-Key</code> header
                 when making requests to <code className="bg-blue-100 px-1 rounded">/api/partner-api</code> endpoints.
+              </p>
+            </div>
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <p className="text-sm text-yellow-800">
+                <strong>⚠️ Warning:</strong> Regenerating your API key will invalidate the current key. Make sure to update all your integrations with the new key immediately.
               </p>
             </div>
           </div>

@@ -68,6 +68,42 @@ export const partnerController = {
     }
   },
 
+  // POST /api/partner/regenerate-api-key
+  async regenerateApiKey(req: Request, res: Response, next: NextFunction) {
+    try {
+      const partnerId = getPartnerId(req);
+      if (!partnerId) {
+        return res.status(404).json({ error: 'Partner profile not found' });
+      }
+
+      // Generate new API key using the same format as registration
+      const newApiKey = `pk_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+
+      const partner = await prisma.partner.update({
+        where: { id: partnerId },
+        data: { apiKey: newApiKey },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true,
+            },
+          },
+        },
+      });
+
+      res.json({
+        id: partner.id,
+        apiKey: partner.apiKey,
+        message: 'API key regenerated successfully. Please update your integrations with the new key.',
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   // POST /api/partner/orders - Create order
   async createOrder(req: Request, res: Response, next: NextFunction) {
     try {

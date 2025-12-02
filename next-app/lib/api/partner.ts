@@ -81,6 +81,11 @@ export const partnerApi = {
     return response.data;
   },
 
+  regenerateApiKey: async (): Promise<{ id: string; apiKey: string; message: string }> => {
+    const response = await apiClient.post<{ id: string; apiKey: string; message: string }>('/partner/regenerate-api-key');
+    return response.data;
+  },
+
   createOrder: async (data: CreateOrderData): Promise<Order> => {
     const response = await apiClient.post<Order>('/partner/orders', data);
     return response.data;

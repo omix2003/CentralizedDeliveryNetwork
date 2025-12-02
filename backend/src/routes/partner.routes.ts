@@ -14,6 +14,7 @@ router.use(requirePartner);
 // Partner profile routes
 router.get('/profile', partnerController.getProfile);
 router.put('/webhook', validate(updateWebhookSchema), partnerController.updateWebhook);
+router.post('/regenerate-api-key', partnerController.regenerateApiKey);
 
 // Partner order routes
 router.post('/orders', validate(createOrderSchema), partnerController.createOrder);
