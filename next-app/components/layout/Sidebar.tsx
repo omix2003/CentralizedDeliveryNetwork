@@ -63,18 +63,26 @@ export function Sidebar({ role, userEmail, userName }: SidebarProps) {
 
   const handleSignOut = async () => {
     try {
-      // Broadcast sign out to all tabs before signing out
-      // This ensures other tabs know about the logout immediately
+      // Clear tab-specific session mapping
       if (typeof window !== 'undefined') {
-        // Broadcast to other tabs via localStorage
-        localStorage.setItem('nextauth.message', JSON.stringify({
-          event: 'session',
-          data: 'signout',
-          timestamp: Date.now()
-        }));
-        
-        // Also broadcast via postMessage for same-origin tabs
-        window.postMessage({ type: 'NEXT_AUTH_SIGN_OUT' }, window.location.origin);
+        const tabId = sessionStorage.getItem('tab_id');
+        if (tabId) {
+          try {
+            const sessionTabMap = sessionStorage.getItem('session_tab_map');
+            if (sessionTabMap) {
+              const map = JSON.parse(sessionTabMap);
+              // Remove this tab's session mappings
+              Object.keys(map).forEach(userId => {
+                if (map[userId] === tabId) {
+                  delete map[userId];
+                }
+              });
+              sessionStorage.setItem('session_tab_map', JSON.stringify(map));
+            }
+          } catch (e) {
+            console.error('Error clearing session tab map:', e);
+          }
+        }
       }
 
       // Sign out and redirect to login page

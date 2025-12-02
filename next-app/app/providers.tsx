@@ -1,53 +1,90 @@
 'use client';
 
 import { SessionProvider, useSession } from 'next-auth/react';
-import { ReactNode, useEffect } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ToastProvider } from '@/lib/hooks/useToast';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
-// Component to handle cross-tab session synchronization
+// Generate a unique tab ID for this tab
+function getTabId(): string {
+  if (typeof window === 'undefined') return '';
+  
+  // Check if tab ID already exists in sessionStorage
+  let tabId = sessionStorage.getItem('tab_id');
+  if (!tabId) {
+    // Generate new tab ID
+    tabId = `tab_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    sessionStorage.setItem('tab_id', tabId);
+  }
+  return tabId;
+}
+
+// Component to handle tab-specific session isolation
 function SessionSync({ children }: { children: ReactNode }) {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const router = useRouter();
+  const [tabId] = useState(() => getTabId());
+  const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
-    // Listen for NextAuth's cross-tab synchronization events
-    // NextAuth uses localStorage with key 'nextauth.message' for cross-tab sync
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'nextauth.message') {
-        try {
-          const message = e.newValue ? JSON.parse(e.newValue) : null;
-          if (message?.event === 'session' && message?.data === 'signout') {
-            // Session was signed out in another tab
-            console.log('[Session] Sign out detected from another tab');
-            router.push('/login');
-            // Force reload to clear any cached state
-            window.location.href = '/login';
-          }
-        } catch (error) {
-          // Ignore parse errors
-        }
+    if (typeof window === 'undefined') return;
+
+    // Get or create session tab mapping in sessionStorage
+    const getSessionTabMap = () => {
+      try {
+        const map = sessionStorage.getItem('session_tab_map');
+        return map ? JSON.parse(map) : {};
+      } catch {
+        return {};
       }
     };
 
-    // Listen for custom logout events (for same-origin communication)
-    const handleMessage = (e: MessageEvent) => {
-      if (e.data?.type === 'NEXT_AUTH_SIGN_OUT') {
-        console.log('[Session] Sign out message received');
+    const setSessionTabMap = (map: Record<string, string>) => {
+      try {
+        sessionStorage.setItem('session_tab_map', JSON.stringify(map));
+      } catch (e) {
+        console.error('Failed to set session tab map:', e);
+      }
+    };
+
+    // Check if session belongs to this tab
+    if (status === 'authenticated' && session?.user) {
+      const sessionTabMap = getSessionTabMap();
+      const sessionUserId = session.user.id;
+      const sessionTabId = sessionTabMap[sessionUserId];
+
+      // If session exists but belongs to a different tab, clear it
+      if (sessionTabId && sessionTabId !== tabId) {
+        console.log('[Session] Session belongs to different tab, clearing...');
+        // Clear the session by redirecting to login
         router.push('/login');
-        window.location.href = '/login';
+        return;
       }
-    };
 
-    window.addEventListener('storage', handleStorageChange);
-    window.addEventListener('message', handleMessage);
+      // Mark this session as belonging to this tab
+      if (!sessionTabId) {
+        sessionTabMap[sessionUserId] = tabId;
+        setSessionTabMap(sessionTabMap);
+      }
+    } else if (status === 'unauthenticated') {
+      // Clear tab mapping when logged out
+      const sessionTabMap = getSessionTabMap();
+      Object.keys(sessionTabMap).forEach(userId => {
+        if (sessionTabMap[userId] === tabId) {
+          delete sessionTabMap[userId];
+        }
+      });
+      setSessionTabMap(sessionTabMap);
+    }
 
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('message', handleMessage);
-    };
-  }, [router]);
+    setIsInitialized(true);
+  }, [session, status, tabId, router]);
+
+  // Don't render children until we've checked session ownership
+  if (!isInitialized) {
+    return null;
+  }
 
   return <>{children}</>;
 }
