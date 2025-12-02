@@ -23,3 +23,6 @@ Write-Host "Wait 2-3 seconds before running prisma generate..." -ForegroundColor
 Start-Sleep -Seconds 2
 
 
+
+
+

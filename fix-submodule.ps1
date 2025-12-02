@@ -38,3 +38,6 @@ Write-Host "`nFiles staged. Review with 'git status' and commit with:" -Foregrou
 Write-Host "  git commit -m 'Fix: Remove next-app submodule reference and add as regular files'" -ForegroundColor Cyan
 Write-Host "  git push origin 1/12/2025" -ForegroundColor Cyan
 
+
+
+

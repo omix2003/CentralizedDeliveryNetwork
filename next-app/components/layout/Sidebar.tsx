@@ -35,6 +35,7 @@ const agentNavItems: NavItem[] = [
   { label: 'Dashboard', href: '/agent/dashboard', icon: LayoutDashboard },
   { label: 'Orders', href: '/agent/orders', icon: Package },
   { label: 'Profile', href: '/agent/profile', icon: Users },
+  { label: 'Support', href: '/agent/support', icon: MessageSquare },
 ];
 
 const partnerNavItems: NavItem[] = [
@@ -43,6 +44,7 @@ const partnerNavItems: NavItem[] = [
   { label: 'Tracking', href: '/partner/tracking', icon: MapPin },
   { label: 'Analytics', href: '/partner/analytics', icon: BarChart3 },
   { label: 'Settings', href: '/partner/settings', icon: Settings },
+  { label: 'Support', href: '/partner/support', icon: MessageSquare },
 ];
 
 const adminNavItems: NavItem[] = [

@@ -25,4 +25,8 @@ router.put('/orders/:id', validate(updateOrderSchema), partnerController.updateO
 router.get('/dashboard', partnerController.getDashboardMetrics);
 router.get('/analytics', partnerController.getAnalytics);
 
+// Support tickets
+router.get('/support/tickets', partnerController.getSupportTickets);
+router.post('/support/tickets', partnerController.createSupportTicket);
+
 export default router;

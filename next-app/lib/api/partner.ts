@@ -117,5 +117,23 @@ export const partnerApi = {
     const response = await apiClient.get('/partner/analytics', { params });
     return response.data;
   },
+
+  getSupportTickets: async (params?: {
+    status?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    const response = await apiClient.get('/partner/support/tickets', { params });
+    return response.data;
+  },
+
+  createSupportTicket: async (data: {
+    orderId?: string;
+    issueType: 'DELAY' | 'MISSING' | 'DAMAGE' | 'OTHER';
+    description: string;
+  }) => {
+    const response = await apiClient.post('/partner/support/tickets', data);
+    return response.data;
+  },
 };
 

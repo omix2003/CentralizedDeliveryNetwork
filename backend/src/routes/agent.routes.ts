@@ -73,4 +73,8 @@ router.post('/documents', requireAgent, (req, res, next) => {
 }, agentController.uploadDocument);
 router.delete('/documents/:id', requireAgent, agentController.deleteDocument);
 
+// Support tickets
+router.get('/support/tickets', requireAgent, agentController.getSupportTickets);
+router.post('/support/tickets', requireAgent, agentController.createSupportTicket);
+
 export default router;

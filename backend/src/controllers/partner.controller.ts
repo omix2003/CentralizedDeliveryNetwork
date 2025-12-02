@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../lib/prisma';
-import { getPartnerId } from '../utils/role.util';
+import { getPartnerId, getUserId } from '../utils/role.util';
 import { notifyPartner } from '../lib/webhook';
 import { OrderStatus } from '@prisma/client';
 
@@ -869,6 +869,147 @@ export const partnerController = {
         message: error.message,
         stack: error.stack,
       });
+      next(error);
+    }
+  },
+
+  // GET /api/partner/support/tickets - Get partner's support tickets
+  async getSupportTickets(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = getUserId(req);
+      const partnerId = getPartnerId(req);
+      
+      if (!userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const { status, page = '1', limit = '20' } = req.query;
+      const pageNum = parseInt(page as string, 10);
+      const limitNum = parseInt(limit as string, 10);
+      const skip = (pageNum - 1) * limitNum;
+
+      const where: any = {
+        userId,
+        ...(partnerId ? { partnerId } : {}),
+      };
+
+      if (status && status !== 'ALL') {
+        where.status = status;
+      }
+
+      const [tickets, total] = await Promise.all([
+        prisma.supportTicket.findMany({
+          where,
+          include: {
+            order: {
+              select: {
+                id: true,
+                status: true,
+              },
+            },
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+          skip,
+          take: limitNum,
+        }),
+        prisma.supportTicket.count({ where }),
+      ]);
+
+      res.json({
+        tickets: tickets.map((ticket: any) => ({
+          id: ticket.id,
+          issueType: ticket.issueType,
+          description: ticket.description,
+          status: ticket.status,
+          resolvedAt: ticket.resolvedAt,
+          createdAt: ticket.createdAt.toISOString(),
+          updatedAt: ticket.updatedAt.toISOString(),
+          order: ticket.order || null,
+        })),
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total,
+          totalPages: Math.ceil(total / limitNum),
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // POST /api/partner/support/tickets - Create support ticket
+  async createSupportTicket(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = getUserId(req);
+      const partnerId = getPartnerId(req);
+      
+      if (!userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const { orderId, issueType, description } = req.body;
+
+      if (!issueType || !description) {
+        return res.status(400).json({ error: 'Issue type and description are required' });
+      }
+
+      if (!['DELAY', 'MISSING', 'DAMAGE', 'OTHER'].includes(issueType)) {
+        return res.status(400).json({ error: 'Invalid issue type' });
+      }
+
+      // Verify order exists and belongs to partner if orderId is provided
+      if (orderId) {
+        const order = await prisma.order.findUnique({
+          where: { id: orderId },
+        });
+
+        if (!order) {
+          return res.status(404).json({ error: 'Order not found' });
+        }
+
+        if (order.partnerId !== partnerId) {
+          return res.status(403).json({ error: 'You can only create tickets for your own orders' });
+        }
+      }
+
+      const ticket = await prisma.supportTicket.create({
+        data: {
+          userId,
+          partnerId: partnerId || null,
+          orderId: orderId || null,
+          issueType,
+          description,
+          status: 'OPEN',
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+          order: {
+            select: {
+              id: true,
+              status: true,
+            },
+          },
+        },
+      });
+
+      res.status(201).json({
+        id: ticket.id,
+        issueType: ticket.issueType,
+        description: ticket.description,
+        status: ticket.status,
+        createdAt: ticket.createdAt.toISOString(),
+        message: 'Support ticket created successfully',
+      });
+    } catch (error) {
       next(error);
     }
   },

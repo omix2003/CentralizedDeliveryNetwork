@@ -252,5 +252,74 @@ export const adminApi = {
     });
     return response.data;
   },
+
+  // Support Tickets
+  async getSupportTickets(params?: {
+    status?: string;
+    issueType?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const response = await apiClient.get('/admin/support/tickets', { params });
+    return response.data;
+  },
+
+  async getSupportTicketDetails(id: string) {
+    const response = await apiClient.get(`/admin/support/tickets/${id}`);
+    return response.data;
+  },
+
+  async updateTicketStatus(id: string, status: string, adminNotes?: string) {
+    const response = await apiClient.put(`/admin/support/tickets/${id}/status`, { 
+      status,
+      adminNotes,
+    });
+    return response.data;
+  },
+
+  async resolveTicket(id: string, adminNotes?: string) {
+    const response = await apiClient.post(`/admin/support/tickets/${id}/resolve`, {
+      adminNotes,
+    });
+    return response.data;
+  },
+
+  // Analytics
+  async getAnalyticsOverview(startDate?: string, endDate?: string) {
+    const response = await apiClient.get('/admin/analytics/overview', {
+      params: { startDate, endDate },
+    });
+    return response.data;
+  },
+
+  async getRevenueAnalytics(startDate?: string, endDate?: string, groupBy?: 'day' | 'week' | 'month') {
+    const response = await apiClient.get('/admin/analytics/revenue', {
+      params: { startDate, endDate, groupBy },
+    });
+    return response.data;
+  },
+
+  async getPerformanceAnalytics(startDate?: string, endDate?: string) {
+    const response = await apiClient.get('/admin/analytics/performance', {
+      params: { startDate, endDate },
+    });
+    return response.data;
+  },
+
+  // Settings
+  async getSettings() {
+    const response = await apiClient.get('/admin/settings');
+    return response.data;
+  },
+
+  async updateSettings(settings: {
+    system?: any;
+    notifications?: any;
+    delivery?: any;
+    fees?: any;
+  }) {
+    const response = await apiClient.put('/admin/settings', settings);
+    return response.data;
+  },
 };
 

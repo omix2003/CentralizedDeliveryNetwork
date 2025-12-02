@@ -10,10 +10,11 @@ import { useWebSocket } from '@/lib/hooks/useWebSocket';
 import { useToast } from '@/lib/hooks/useToast';
 import { locationTracker, Location } from '@/lib/services/locationTracker';
 import { calculateDistance, formatDistance } from '@/lib/utils/distance';
-import { Package, RefreshCw, MapPin, DollarSign, Clock, AlertCircle, CheckCircle, Filter } from 'lucide-react';
+import { Package, RefreshCw, MapPin, DollarSign, Clock, AlertCircle, CheckCircle, Filter, MessageSquare } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { AddressDisplay } from '@/components/orders/AddressDisplay';
+import { SupportTicketForm } from '@/components/support/SupportTicketForm';
 
 export default function AgentOrdersPage() {
   const router = useRouter();
@@ -29,6 +30,7 @@ export default function AgentOrdersPage() {
   const [currentLocation, setCurrentLocation] = useState<Location | null>(null);
   const [maxDistance, setMaxDistance] = useState<number>(10); // km
   const [sortBy, setSortBy] = useState<'distance' | 'payout' | 'time'>('distance');
+  const [showTicketForm, setShowTicketForm] = useState<string | null>(null);
 
   // WebSocket connection for real-time order offers
   const { connected: wsConnected, on } = useWebSocket({
@@ -477,22 +479,54 @@ export default function AgentOrdersPage() {
                       </Button>
                     </>
                   ) : (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex-1"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        router.push(`/agent/orders/${order.id}`);
-                      }}
-                    >
-                      View Details
-                    </Button>
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          router.push(`/agent/orders/${order.id}`);
+                        }}
+                      >
+                        View Details
+                      </Button>
+                      {/* Show support ticket button for completed/delivered orders */}
+                      {(order.status === 'DELIVERED' || order.status === 'CANCELLED') && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowTicketForm(order.id);
+                          }}
+                        >
+                          <MessageSquare className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </>
                   )}
                 </div>
               </CardContent>
             </Card>
           ))}
+        </div>
+      )}
+
+      {/* Support Ticket Form Modal */}
+      {showTicketForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="w-full max-w-2xl">
+            <SupportTicketForm
+              orderId={showTicketForm}
+              apiCall={agentApi.createSupportTicket}
+              onSuccess={() => {
+                setShowTicketForm(null);
+                showToast('success', 'Support ticket created successfully!');
+              }}
+              onCancel={() => setShowTicketForm(null)}
+            />
+          </div>
         </div>
       )}
     </div>

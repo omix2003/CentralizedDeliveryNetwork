@@ -5,13 +5,32 @@ import { authApi } from "@/lib/api/auth";
 type UserRole = 'AGENT' | 'PARTNER' | 'ADMIN';
 
 // Validate required environment variables
-const NEXTAUTH_SECRET = process.env.NEXTAUTH_SECRET;
+let NEXTAUTH_SECRET = process.env.NEXTAUTH_SECRET;
 const NEXTAUTH_URL = process.env.NEXTAUTH_URL;
 
+// In development, provide a fallback secret if not set
 if (!NEXTAUTH_SECRET) {
-  const error = 'NEXTAUTH_SECRET is not set. Please add it to your environment variables (.env or .env.local file).';
-  console.error('[AUTH CONFIG]', error);
-  throw new Error(error);
+  if (process.env.NODE_ENV === 'development') {
+    console.warn('[AUTH CONFIG] NEXTAUTH_SECRET not found. Using temporary development secret.');
+    console.warn('[AUTH CONFIG] Please set NEXTAUTH_SECRET in .env.local for production.');
+    NEXTAUTH_SECRET = 'KMm0Dm6e19k/0pXEosD4+KaO8G3ZAKFd3THVCAyiEXQ=';
+    process.env.NEXTAUTH_SECRET = NEXTAUTH_SECRET;
+  } else {
+    const error = `NEXTAUTH_SECRET is not set. 
+
+To fix this:
+1. Create a .env.local file in the next-app/ directory
+2. Add the following line:
+   NEXTAUTH_SECRET="your-secret-key-here"
+
+To generate a secret key, run:
+   PowerShell: [Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Minimum 0 -Maximum 256 }))
+   Linux/Mac: openssl rand -base64 32
+
+3. Restart your development server after adding the file.`;
+    console.error('[AUTH CONFIG]', error);
+    throw new Error(error);
+  }
 }
 
 // Set default NEXTAUTH_URL for development if not set
@@ -38,7 +57,7 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
-  secret: NEXTAUTH_SECRET,
+  secret: process.env.NEXTAUTH_SECRET || NEXTAUTH_SECRET,
   trustHost: true, // Required for NextAuth v5 - allows dynamic host detection
   session: {
     strategy: "jwt",

@@ -58,3 +58,6 @@ This ensures Prisma Client works on Netlify's Linux environment.
 
 - Prisma Netlify Guide: https://pris.ly/d/netlify-build
 
+
+
+

@@ -11,6 +11,7 @@ import agentRoutes from './routes/agent.routes';
 import partnerRoutes from './routes/partner.routes';
 import partnerApiRoutes from './routes/partner-api.routes';
 import adminRoutes from './routes/admin.routes';
+import publicRoutes from './routes/public.routes';
 
 // Load environment variables
 dotenv.config();
@@ -95,6 +96,9 @@ console.log('📦 Registering API routes...');
 try {
   console.log('[DEBUG] Imported agentRoutes type:', typeof agentRoutes);
   console.log('[DEBUG] agentRoutes constructor:', agentRoutes?.constructor?.name);
+  
+  // Public routes (no authentication)
+  app.use('/api/public', publicRoutes);
   
   app.use('/api/auth', authRoutes);
   console.log('✅ Auth routes registered at /api/auth');

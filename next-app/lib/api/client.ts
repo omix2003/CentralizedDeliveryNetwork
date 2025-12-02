@@ -68,26 +68,33 @@ apiClient.interceptors.response.use(
       const url = error.config?.url || '';
       const fullURL = `${baseURL}${url}`;
       
-      let errorMessage = 'Network Error';
-      if (error.code === 'ECONNREFUSED' || error.message === 'Network Error') {
-        errorMessage = `Cannot connect to backend server at ${baseURL}. Please make sure the backend server is running and NEXT_PUBLIC_API_URL is set correctly.`;
-      } else if (error.code === 'ETIMEDOUT' || error.code === 'ECONNABORTED') {
-        errorMessage = `Request to ${fullURL} timed out after 30 seconds. The backend server may be sleeping (Render free tier) or slow to respond. Try again in a few seconds.`;
-      } else if (error.message) {
-        errorMessage = `Network error: ${error.message}`;
+      const errorCode = error.code || (error as any).code;
+      const errorMessage = error.message || (error as any).message || 'Unknown network error';
+      
+      let userFriendlyMessage = 'Network Error';
+      if (errorCode === 'ECONNREFUSED' || errorMessage === 'Network Error' || errorMessage.includes('Failed to fetch')) {
+        userFriendlyMessage = `Cannot connect to backend server at ${baseURL}. Please make sure the backend server is running and NEXT_PUBLIC_API_URL is set correctly.`;
+      } else if (errorCode === 'ETIMEDOUT' || errorCode === 'ECONNABORTED') {
+        userFriendlyMessage = `Request to ${fullURL} timed out after 30 seconds. The backend server may be sleeping (Render free tier) or slow to respond. Try again in a few seconds.`;
+      } else if (errorMessage) {
+        userFriendlyMessage = `Network error: ${errorMessage}`;
       }
       
       // Create a more informative error
-      const networkError = new Error(errorMessage);
+      const networkError = new Error(userFriendlyMessage);
       (networkError as any).isNetworkError = true;
       (networkError as any).originalError = error;
       (networkError as any).url = fullURL;
+      (networkError as any).code = errorCode;
       
       console.error('[API Client] Network Error:', {
-        message: errorMessage,
+        message: userFriendlyMessage,
         url: fullURL,
-        code: error.code,
-        originalError: error.message
+        baseURL: baseURL,
+        code: errorCode,
+        originalError: errorMessage,
+        errorType: error.constructor?.name,
+        error: error,
       });
       
       return Promise.reject(networkError);

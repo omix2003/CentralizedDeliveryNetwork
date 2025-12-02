@@ -55,3 +55,6 @@ This prevents scanning of build artifacts where environment variables are expect
 
 The documentation files (`ENV_VARIABLES.md`, `PROJECT_SUMMARY.md`, `README.md`) contain example values like `"http://localhost:3000"` which are not real secrets. These are safe to keep in the repository.
 
+
+
+

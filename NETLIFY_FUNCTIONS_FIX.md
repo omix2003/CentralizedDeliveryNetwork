@@ -53,3 +53,6 @@ But for now, **Option 1 is recommended** since Next.js handles API routes native
 
 Netlify may have auto-detected or you may have accidentally set the functions directory to the config file path. Since Next.js uses its own API routes, we don't need Netlify Functions.
 
+
+
+

@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { reverseGeocode } from '@/lib/utils/geocoding';
+import { SupportTicketForm } from '@/components/support/SupportTicketForm';
 
 // Lazy load Google Places Autocomplete
 const GooglePlacesAutocomplete = dynamic(
@@ -620,6 +621,23 @@ export default function OrderDetailsPage() {
                 <MapPin className="h-4 w-4 mr-2" />
                 View Route on Maps
               </Button>
+            </CardContent>
+          </Card>
+
+          {/* Support Ticket Form */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Need Help?</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <SupportTicketForm
+                orderId={order.id}
+                apiCall={partnerApi.createSupportTicket}
+                onSuccess={() => {
+                  setSuccess('Support ticket created successfully! Our team will review it shortly.');
+                  setTimeout(() => setSuccess(null), 5000);
+                }}
+              />
             </CardContent>
           </Card>
         </div>

@@ -109,7 +109,7 @@ export const agentApi = {
   },
 
   getMyOrders: async (status?: string): Promise<AgentOrder[]> => {
-    const params = status ? { status } : {};
+    const params = status && status !== 'all' ? { status } : {};
     const response = await apiClient.get<AgentOrder[]>('/agent/my-orders', { params });
     return response.data;
   },
@@ -121,6 +121,24 @@ export const agentApi = {
 
   getMetrics: async (): Promise<AgentMetrics> => {
     const response = await apiClient.get<AgentMetrics>('/agent/metrics');
+    return response.data;
+  },
+
+  getSupportTickets: async (params?: {
+    status?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    const response = await apiClient.get('/agent/support/tickets', { params });
+    return response.data;
+  },
+
+  createSupportTicket: async (data: {
+    orderId?: string;
+    issueType: 'DELAY' | 'MISSING' | 'DAMAGE' | 'OTHER';
+    description: string;
+  }) => {
+    const response = await apiClient.post('/agent/support/tickets', data);
     return response.data;
   },
 };

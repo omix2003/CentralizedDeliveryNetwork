@@ -1697,5 +1697,737 @@ export const adminController = {
       next(error);
     }
   },
+
+  // ==================== SUPPORT TICKETS ====================
+  
+  // GET /api/admin/support/tickets - Get all support tickets
+  async getSupportTickets(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { status, issueType, page = '1', limit = '20' } = req.query;
+      const pageNum = parseInt(page as string, 10);
+      const limitNum = parseInt(limit as string, 10);
+      const skip = (pageNum - 1) * limitNum;
+
+      const where: any = {};
+      if (status && status !== 'ALL') {
+        where.status = status;
+      }
+      if (issueType && issueType !== 'ALL') {
+        where.issueType = issueType;
+      }
+
+      const [tickets, total] = await Promise.all([
+        prisma.supportTicket.findMany({
+          where,
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                phone: true,
+                role: true,
+              },
+            },
+            order: {
+              select: {
+                id: true,
+                status: true,
+              },
+            },
+            agent: {
+              select: {
+                id: true,
+                user: {
+                  select: {
+                    name: true,
+                    email: true,
+                  },
+                },
+              },
+            },
+            partner: {
+              select: {
+                id: true,
+                companyName: true,
+              },
+            },
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+          skip,
+          take: limitNum,
+        }),
+        prisma.supportTicket.count({ where }),
+      ]);
+
+      res.json({
+        tickets: tickets.map((ticket: any) => ({
+          id: ticket.id,
+          issueType: ticket.issueType,
+          description: ticket.description,
+          status: ticket.status,
+          resolvedAt: ticket.resolvedAt,
+          adminNotes: ticket.adminNotes || null,
+          createdAt: ticket.createdAt.toISOString(),
+          updatedAt: ticket.updatedAt.toISOString(),
+          user: ticket.user || null,
+          order: ticket.order || null,
+          agent: ticket.agent || null,
+          partner: ticket.partner || null,
+        })),
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total,
+          totalPages: Math.ceil(total / limitNum),
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // GET /api/admin/support/tickets/:id - Get ticket details
+  async getSupportTicketDetails(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+
+      const ticket = await prisma.supportTicket.findUnique({
+        where: { id },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true,
+              role: true,
+            },
+          },
+          order: {
+            include: {
+              partner: {
+                select: {
+                  companyName: true,
+                },
+              },
+              agent: {
+                select: {
+                  user: {
+                    select: {
+                      name: true,
+                      email: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+          agent: {
+            include: {
+              user: {
+                select: {
+                  name: true,
+                  email: true,
+                  phone: true,
+                },
+              },
+            },
+          },
+          partner: {
+            include: {
+              user: {
+                select: {
+                  name: true,
+                  email: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!ticket) {
+        return res.status(404).json({ error: 'Support ticket not found' });
+      }
+
+      const ticketData = ticket as any;
+      res.json({
+        id: ticketData.id,
+        issueType: ticketData.issueType,
+        description: ticketData.description,
+        status: ticketData.status,
+        resolvedAt: ticketData.resolvedAt,
+        adminNotes: ticketData.adminNotes || null,
+        createdAt: ticketData.createdAt.toISOString(),
+        updatedAt: ticketData.updatedAt.toISOString(),
+        user: ticketData.user || null,
+        order: ticketData.order || null,
+        agent: ticketData.agent || null,
+        partner: ticketData.partner || null,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // PUT /api/admin/support/tickets/:id/status - Update ticket status
+  async updateTicketStatus(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const { status, adminNotes } = req.body;
+
+      if (!['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'].includes(status)) {
+        return res.status(400).json({ error: 'Invalid status' });
+      }
+
+      const updateData: any = {
+        status: status as any,
+        ...(status === 'RESOLVED' && !req.body.resolvedAt ? { resolvedAt: new Date() } : {}),
+      };
+
+      // Save admin notes when closing or resolving
+      if ((status === 'CLOSED' || status === 'RESOLVED') && adminNotes) {
+        updateData.adminNotes = adminNotes;
+      }
+
+      const ticket = await prisma.supportTicket.update({
+        where: { id },
+        data: updateData,
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+          agent: {
+            select: {
+              id: true,
+              userId: true,
+            },
+          },
+          order: {
+            select: {
+              id: true,
+              status: true,
+            },
+          },
+        },
+      });
+
+      // Notify agent if ticket status changed to IN_PROGRESS and ticket is order-related
+      const ticketData = ticket as any;
+      if (status === 'IN_PROGRESS' && ticketData.agentId && ticketData.orderId) {
+        try {
+          const { sendPushNotification } = await import('../services/fcm.service');
+          await sendPushNotification(
+            ticketData.agent.userId,
+            'Support Ticket Update',
+            `Admin has started working on your ticket for order ${ticketData.order.id.substring(0, 8)}`,
+            {
+              type: 'TICKET_UPDATE',
+              ticketId: ticketData.id,
+              orderId: ticketData.order.id,
+              status: 'IN_PROGRESS',
+            }
+          );
+          console.log(`[Admin] Sent notification to agent ${ticketData.agentId} about ticket ${ticketData.id}`);
+        } catch (notifError) {
+          console.error('[Admin] Failed to send notification to agent:', notifError);
+          // Don't fail the request if notification fails
+        }
+      }
+
+      res.json({
+        id: ticket.id,
+        status: ticket.status,
+        resolvedAt: ticket.resolvedAt,
+        message: 'Ticket status updated successfully',
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // POST /api/admin/support/tickets/:id/resolve - Resolve ticket
+  async resolveTicket(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const { resolutionNotes, adminNotes } = req.body;
+
+      const ticket = await prisma.supportTicket.update({
+        where: { id },
+        data: {
+          status: 'RESOLVED',
+          resolvedAt: new Date(),
+          adminNotes: adminNotes || resolutionNotes || null,
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+          agent: {
+            select: {
+              id: true,
+              userId: true,
+            },
+          },
+          partner: {
+            select: {
+              id: true,
+              userId: true,
+            },
+          },
+          order: {
+            select: {
+              id: true,
+              status: true,
+            },
+          },
+        },
+      });
+
+      // Notify user (agent or partner) if ticket is order-related
+      const ticketData = ticket as any;
+      const userIdToNotify = ticketData.agentId ? ticketData.agent?.userId : ticketData.partnerId ? ticketData.partner?.userId : null;
+      if (userIdToNotify && ticketData.orderId && ticketData.order) {
+        try {
+          const { sendPushNotification } = await import('../services/fcm.service');
+          await sendPushNotification(
+            userIdToNotify,
+            'Support Ticket Resolved',
+            `Your support ticket for order ${ticketData.order.id.substring(0, 8)} has been resolved`,
+            {
+              type: 'TICKET_RESOLVED',
+              ticketId: ticketData.id,
+              orderId: ticketData.order.id,
+              status: 'RESOLVED',
+            }
+          );
+          console.log(`[Admin] Sent resolution notification to user ${userIdToNotify} about ticket ${ticketData.id}`);
+        } catch (notifError) {
+          console.error('[Admin] Failed to send resolution notification:', notifError);
+          // Don't fail the request if notification fails
+        }
+      }
+
+      res.json({
+        id: ticket.id,
+        status: ticket.status,
+        resolvedAt: ticket.resolvedAt,
+        message: 'Ticket resolved successfully',
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // ==================== ANALYTICS ====================
+
+  // GET /api/admin/analytics/overview - Get comprehensive analytics overview
+  async getAnalyticsOverview(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { startDate, endDate } = req.query;
+      const start = startDate ? new Date(startDate as string) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const end = endDate ? new Date(endDate as string) : new Date();
+
+      const [
+        totalRevenue,
+        totalOrders,
+        completedOrders,
+        cancelledOrders,
+        avgDeliveryTime,
+        ordersByDay,
+        ordersByStatus,
+        revenueByDay,
+        topAgents,
+        topPartners,
+      ] = await Promise.all([
+        // Total revenue
+        prisma.order.aggregate({
+          where: {
+            status: 'DELIVERED',
+            deliveredAt: { gte: start, lte: end },
+          },
+          _sum: {
+            payoutAmount: true,
+          },
+        }),
+        // Total orders
+        prisma.order.count({
+          where: {
+            createdAt: { gte: start, lte: end },
+          },
+        }),
+        // Completed orders
+        prisma.order.count({
+          where: {
+            status: 'DELIVERED',
+            deliveredAt: { gte: start, lte: end },
+          },
+        }),
+        // Cancelled orders
+        prisma.order.count({
+          where: {
+            status: 'CANCELLED',
+            cancelledAt: { gte: start, lte: end },
+          },
+        }),
+        // Average delivery time
+        prisma.order.aggregate({
+          where: {
+            status: 'DELIVERED',
+            deliveredAt: { gte: start, lte: end },
+            actualDuration: { not: null },
+          },
+          _avg: {
+            actualDuration: true,
+          },
+        }),
+        // Orders by day (last 30 days)
+        prisma.$queryRaw<Array<{ date: Date; count: bigint }>>`
+          SELECT DATE("createdAt") as date, COUNT(*)::bigint as count
+          FROM "Order"
+          WHERE "createdAt" >= ${start} AND "createdAt" <= ${end}
+          GROUP BY DATE("createdAt")
+          ORDER BY date ASC
+        `,
+        // Orders by status
+        prisma.order.groupBy({
+          by: ['status'],
+          where: {
+            createdAt: { gte: start, lte: end },
+          },
+          _count: {
+            id: true,
+          },
+        }),
+        // Revenue by day
+        prisma.$queryRaw<Array<{ date: Date; revenue: number }>>`
+          SELECT DATE("deliveredAt") as date, SUM("payoutAmount")::float as revenue
+          FROM "Order"
+          WHERE status = 'DELIVERED' AND "deliveredAt" >= ${start} AND "deliveredAt" <= ${end}
+          GROUP BY DATE("deliveredAt")
+          ORDER BY date ASC
+        `,
+        // Top agents by completed orders
+        prisma.agent.findMany({
+          where: {
+            orders: {
+              some: {
+                status: 'DELIVERED',
+                deliveredAt: { gte: start, lte: end },
+              },
+            },
+          },
+          include: {
+            user: {
+              select: {
+                name: true,
+                email: true,
+              },
+            },
+            _count: {
+              select: {
+                orders: {
+                  where: {
+                    status: 'DELIVERED',
+                    deliveredAt: { gte: start, lte: end },
+                  },
+                },
+              },
+            },
+          },
+          orderBy: {
+            orders: {
+              _count: 'desc',
+            },
+          },
+          take: 10,
+        }),
+        // Top partners by orders
+        prisma.partner.findMany({
+          where: {
+            orders: {
+              some: {
+                createdAt: { gte: start, lte: end },
+              },
+            },
+          },
+          include: {
+            user: {
+              select: {
+                name: true,
+                email: true,
+              },
+            },
+            _count: {
+              select: {
+                orders: {
+                  where: {
+                    createdAt: { gte: start, lte: end },
+                  },
+                },
+              },
+            },
+          },
+          orderBy: {
+            orders: {
+              _count: 'desc',
+            },
+          },
+          take: 10,
+        }),
+      ]);
+
+      res.json({
+        summary: {
+          totalRevenue: totalRevenue._sum.payoutAmount || 0,
+          totalOrders,
+          completedOrders,
+          cancelledOrders,
+          avgDeliveryTime: avgDeliveryTime._avg.actualDuration || 0,
+          completionRate: totalOrders > 0 ? (completedOrders / totalOrders) * 100 : 0,
+        },
+        ordersByDay: (ordersByDay as any[]).map(item => ({
+          date: item.date,
+          count: Number(item.count),
+        })),
+        ordersByStatus: ordersByStatus.map(item => ({
+          status: item.status,
+          count: item._count.id,
+        })),
+        revenueByDay: (revenueByDay as any[]).map(item => ({
+          date: item.date,
+          revenue: Number(item.revenue) || 0,
+        })),
+        topAgents: topAgents.map(agent => ({
+          id: agent.id,
+          name: agent.user.name,
+          email: agent.user.email,
+          completedOrders: agent._count.orders,
+          rating: agent.rating,
+        })),
+        topPartners: topPartners.map(partner => ({
+          id: partner.id,
+          companyName: partner.companyName,
+          orders: partner._count.orders,
+        })),
+      });
+    } catch (error) {
+      console.error('[Analytics] Error:', error);
+      next(error);
+    }
+  },
+
+  // GET /api/admin/analytics/revenue - Get revenue analytics
+  async getRevenueAnalytics(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { startDate, endDate, groupBy = 'day' } = req.query;
+      const start = startDate ? new Date(startDate as string) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const end = endDate ? new Date(endDate as string) : new Date();
+
+      // Revenue by time period
+      let revenueData;
+      if (groupBy === 'day') {
+        revenueData = await prisma.$queryRaw<Array<{ date: Date; revenue: number; orders: bigint }>>`
+          SELECT DATE("deliveredAt") as date, SUM("payoutAmount")::float as revenue, COUNT(*)::bigint as orders
+          FROM "Order"
+          WHERE status = 'DELIVERED' AND "deliveredAt" >= ${start} AND "deliveredAt" <= ${end}
+          GROUP BY DATE("deliveredAt")
+          ORDER BY date ASC
+        `;
+      } else if (groupBy === 'week') {
+        revenueData = await prisma.$queryRaw<Array<{ week: Date; revenue: number; orders: bigint }>>`
+          SELECT DATE_TRUNC('week', "deliveredAt") as week, SUM("payoutAmount")::float as revenue, COUNT(*)::bigint as orders
+          FROM "Order"
+          WHERE status = 'DELIVERED' AND "deliveredAt" >= ${start} AND "deliveredAt" <= ${end}
+          GROUP BY DATE_TRUNC('week', "deliveredAt")
+          ORDER BY week ASC
+        `;
+      } else {
+        revenueData = await prisma.$queryRaw<Array<{ month: Date; revenue: number; orders: bigint }>>`
+          SELECT DATE_TRUNC('month', "deliveredAt") as month, SUM("payoutAmount")::float as revenue, COUNT(*)::bigint as orders
+          FROM "Order"
+          WHERE status = 'DELIVERED' AND "deliveredAt" >= ${start} AND "deliveredAt" <= ${end}
+          GROUP BY DATE_TRUNC('month', "deliveredAt")
+          ORDER BY month ASC
+        `;
+      }
+
+      res.json({
+        revenueData: (revenueData as any[]).map(item => ({
+          date: item.date || item.week || item.month,
+          revenue: Number(item.revenue) || 0,
+          orders: Number(item.orders) || 0,
+        })),
+        period: { start, end },
+        groupBy,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // GET /api/admin/analytics/performance - Get performance analytics
+  async getPerformanceAnalytics(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { startDate, endDate } = req.query;
+      const start = startDate ? new Date(startDate as string) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const end = endDate ? new Date(endDate as string) : new Date();
+
+      const [
+        avgDeliveryTime,
+        avgAssignmentTime,
+        onTimeDeliveryRate,
+        agentPerformance,
+      ] = await Promise.all([
+        // Average delivery time
+        prisma.order.aggregate({
+          where: {
+            status: 'DELIVERED',
+            deliveredAt: { gte: start, lte: end },
+            actualDuration: { not: null },
+          },
+          _avg: {
+            actualDuration: true,
+          },
+        }),
+        // Average assignment time (time from creation to assignment)
+        prisma.$queryRaw<Array<{ avg_assignment_time: number }>>`
+          SELECT AVG(EXTRACT(EPOCH FROM ("assignedAt" - "createdAt")))::float as avg_assignment_time
+          FROM "Order"
+          WHERE "assignedAt" IS NOT NULL 
+            AND "createdAt" >= ${start} 
+            AND "createdAt" <= ${end}
+        `,
+        // On-time delivery rate (delivered within estimated time)
+        prisma.$queryRaw<Array<{ on_time: bigint; total: bigint }>>`
+          SELECT 
+            COUNT(*) FILTER (WHERE "actualDuration" <= "estimatedDuration")::bigint as on_time,
+            COUNT(*)::bigint as total
+          FROM "Order"
+          WHERE status = 'DELIVERED' 
+            AND "deliveredAt" >= ${start} 
+            AND "deliveredAt" <= ${end}
+            AND "actualDuration" IS NOT NULL
+            AND "estimatedDuration" IS NOT NULL
+        `,
+        // Agent performance metrics
+        prisma.agent.findMany({
+          where: {
+            orders: {
+              some: {
+                deliveredAt: { gte: start, lte: end },
+              },
+            },
+          },
+          include: {
+            user: {
+              select: {
+                name: true,
+              },
+            },
+            orders: {
+              where: {
+                deliveredAt: { gte: start, lte: end },
+              },
+              select: {
+                actualDuration: true,
+                estimatedDuration: true,
+              },
+            },
+          },
+        }),
+      ]);
+
+      const onTimeRate = (onTimeDeliveryRate as any[])[0];
+      const onTimeDeliveryRateValue = onTimeRate?.total && Number(onTimeRate.total) > 0 
+        ? (Number(onTimeRate.on_time) / Number(onTimeRate.total)) * 100 
+        : 0;
+
+      res.json({
+        avgDeliveryTime: avgDeliveryTime._avg.actualDuration || 0,
+        avgAssignmentTime: Number((avgAssignmentTime as any[])[0]?.avg_assignment_time) || 0,
+        onTimeDeliveryRate: onTimeDeliveryRateValue,
+        agentPerformance: agentPerformance.map(agent => ({
+          id: agent.id,
+          name: agent.user.name,
+          totalOrders: agent.orders.length,
+          avgDeliveryTime: agent.orders.length > 0
+            ? agent.orders.reduce((sum, o) => sum + (o.actualDuration || 0), 0) / agent.orders.length
+            : 0,
+          onTimeRate: agent.orders.length > 0
+            ? (agent.orders.filter(o => o.actualDuration && o.estimatedDuration && o.actualDuration <= o.estimatedDuration).length / agent.orders.length) * 100
+            : 0,
+        })),
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // ==================== SETTINGS ====================
+
+  // GET /api/admin/settings - Get system settings
+  async getSettings(req: Request, res: Response, next: NextFunction) {
+    try {
+      // For now, return default settings
+      // In a real app, these would be stored in a database
+      res.json({
+        system: {
+          name: 'DeliveryHub',
+          maintenanceMode: false,
+          registrationEnabled: true,
+          agentAutoApproval: false,
+        },
+        notifications: {
+          emailEnabled: true,
+          smsEnabled: false,
+          pushEnabled: true,
+        },
+        delivery: {
+          maxRadius: 5000, // meters
+          maxAgentsToOffer: 5,
+          offerTimeout: 30, // seconds
+        },
+        fees: {
+          platformFee: 0.1, // 10%
+          minPayout: 10.0,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // PUT /api/admin/settings - Update system settings
+  async updateSettings(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { system, notifications, delivery, fees } = req.body;
+
+      // In a real app, save these to database
+      // For now, just return success
+      res.json({
+        message: 'Settings updated successfully',
+        settings: {
+          system: system || {},
+          notifications: notifications || {},
+          delivery: delivery || {},
+          fees: fees || {},
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
 };
 

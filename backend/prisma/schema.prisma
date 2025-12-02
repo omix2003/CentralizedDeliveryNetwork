@@ -246,6 +246,7 @@ model SupportTicket {
   description String
   status     TicketStatus @default(OPEN)
   resolvedAt DateTime?
+  adminNotes String?      // Admin comments/notes when resolving or closing
   createdAt  DateTime     @default(now())
   updatedAt  DateTime     @updatedAt
 

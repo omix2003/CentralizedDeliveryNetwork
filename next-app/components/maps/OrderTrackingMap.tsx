@@ -99,6 +99,17 @@ export function OrderTrackingMap({
       return;
     }
 
+    // Check if API key is available
+    const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+    if (!googleApiKey) {
+      // No API key, use straight line fallback immediately
+      setFetchedRoute([
+        { longitude: pickup.longitude, latitude: pickup.latitude },
+        { longitude: dropoff.longitude, latitude: dropoff.latitude },
+      ]);
+      return;
+    }
+
     // Fetch route from Google Directions API
     const fetchRoute = async () => {
       setRouteLoading(true);
@@ -110,9 +121,10 @@ export function OrderTrackingMap({
         );
         setFetchedRoute(directionsRoute);
       } catch (error: any) {
-        console.error('Error fetching route:', error);
-        setRouteError(error.message || 'Failed to fetch route');
-        // Fallback to straight line
+        // Suppress error logging - errors are already handled in getRouteFromDirections
+        // Configuration errors show a one-time warning, other errors are handled gracefully
+        setRouteError(null); // Don't show error to user, just use fallback
+        // Fallback to straight line - this is acceptable for display purposes
         setFetchedRoute([
           { longitude: pickup.longitude, latitude: pickup.latitude },
           { longitude: dropoff.longitude, latitude: dropoff.latitude },

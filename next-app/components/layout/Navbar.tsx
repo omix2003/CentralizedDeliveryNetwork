@@ -55,7 +55,7 @@ export const Navbar = () => {
                     {/* Action Buttons */}
                     <div className="hidden md:flex items-center gap-3">
                         <Link href="/login">
-                            <Button variant="ghost" size="sm" className="text-slate-300 hover:text-white">Log In</Button>
+                            <Button variant="ghost" size="sm" className="text-white hover:text-white hover:bg-white/10">Log In</Button>
                         </Link>
                         <Link href="/register">
                             <Button variant="premium" size="sm">Get Started</Button>
@@ -102,7 +102,7 @@ export const Navbar = () => {
                         ))}
                         <div className="mt-6 pt-6 border-t border-white/10 flex flex-col gap-3">
                             <Link href="/login" onClick={() => setIsMobileMenuOpen(false)}>
-                                <Button variant="ghost" className="w-full justify-center text-slate-300 hover:text-white">Log In</Button>
+                                <Button variant="ghost" className="w-full justify-center text-white hover:text-white hover:bg-white/10">Log In</Button>
                             </Link>
                             <Link href="/register" onClick={() => setIsMobileMenuOpen(false)}>
                                 <Button variant="premium" className="w-full justify-center">Get Started</Button>

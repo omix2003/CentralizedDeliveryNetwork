@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { reverseGeocode } from '@/lib/utils/geocoding';
+import { SupportTicketForm } from '@/components/support/SupportTicketForm';
 
 // Dynamically import map component to avoid SSR issues
 const OrderTrackingMap = dynamic(() => import('@/components/maps/OrderTrackingMap').then(mod => ({ default: mod.OrderTrackingMap })), {
@@ -436,6 +437,22 @@ export default function AgentOrderDetailsPage() {
                   {order.partner.email}
                 </a>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Support Ticket Form */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Need Help?</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <SupportTicketForm
+                orderId={order.id}
+                apiCall={agentApi.createSupportTicket}
+                onSuccess={() => {
+                  alert('Support ticket created successfully! Our team will review it shortly.');
+                }}
+              />
             </CardContent>
           </Card>
         </div>
