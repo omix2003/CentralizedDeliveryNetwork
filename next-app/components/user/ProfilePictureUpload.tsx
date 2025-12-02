@@ -1,11 +1,10 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
-import { Button } from '../ui/Button';
-import { Camera, Loader2, Upload } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Camera, Loader2 } from 'lucide-react';
 import Image from 'next/image';
 import { authApi } from '@/lib/api/auth';
-import { getBackendBaseUrl } from '@/lib/utils/imageUrl';
+import { getImageUrl } from '@/lib/utils/imageUrl';
 
 interface ProfilePictureUploadProps {
     currentImageUrl?: string | null;
@@ -16,45 +15,86 @@ export const ProfilePictureUpload: React.FC<ProfilePictureUploadProps> = ({
     currentImageUrl,
     onUploadComplete,
 }) => {
+    // Track if we're currently uploading to prevent prop updates from resetting state
     const [isUploading, setIsUploading] = useState(false);
-    const [previewUrl, setPreviewUrl] = useState<string | null>(currentImageUrl || null);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [uploadedUrl, setUploadedUrl] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const isUploadingRef = useRef(false);
 
-    // Sync previewUrl with currentImageUrl prop when it changes
+    // Helper to normalize image URL (handles both full URLs and relative paths)
+    const normalizeImageUrl = useCallback((url: string | null | undefined): string | null => {
+        if (!url) return null;
+        // If already a full URL, return as is
+        if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:')) {
+            return url;
+        }
+        // Otherwise, convert relative path to full URL
+        return getImageUrl(url);
+    }, []);
+
+    // Initialize preview URL from prop only on mount or when not uploading
     useEffect(() => {
-        setPreviewUrl(currentImageUrl || null);
-    }, [currentImageUrl]);
+        if (!isUploadingRef.current && currentImageUrl) {
+            const imageUrl = normalizeImageUrl(currentImageUrl);
+            setPreviewUrl(imageUrl);
+            // If we have a current image and no uploaded URL, set uploaded URL too
+            if (imageUrl && !uploadedUrl) {
+                setUploadedUrl(imageUrl);
+            }
+        } else if (!isUploadingRef.current && !currentImageUrl) {
+            // Clear preview if no image URL
+            setPreviewUrl(null);
+        }
+    }, [currentImageUrl, normalizeImageUrl]);
 
-    const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Update uploadedUrl when currentImageUrl changes (after session refresh)
+    useEffect(() => {
+        if (currentImageUrl && !isUploadingRef.current) {
+            const imageUrl = normalizeImageUrl(currentImageUrl);
+            if (imageUrl) {
+                setUploadedUrl(imageUrl);
+            }
+        }
+    }, [currentImageUrl, normalizeImageUrl]);
+
+    const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        // Preview
+        // Validate file type
+        if (!file.type.startsWith('image/')) {
+            alert('Please select an image file');
+            return;
+        }
+
+        // Validate file size (5MB)
+        if (file.size > 5 * 1024 * 1024) {
+            alert('File size must be less than 5MB');
+            return;
+        }
+
+        // Create preview URL immediately
         const objectUrl = URL.createObjectURL(file);
         setPreviewUrl(objectUrl);
-
-        // Upload
+        isUploadingRef.current = true;
         setIsUploading(true);
-        const formData = new FormData();
-        formData.append('file', file);
 
         try {
+            // Upload the file
             const result = await authApi.uploadProfilePicture(file);
             
-            // Construct full URL if it's a relative path (backend upload)
-            let imageUrl = result.url;
-            if (imageUrl.startsWith('/uploads/')) {
-                // Use backend API URL for serving images
-                const backendUrl = getBackendBaseUrl();
-                imageUrl = `${backendUrl}${result.url}`;
-            }
+            // Construct full URL from the response
+            const imageUrl = normalizeImageUrl(result.url) || result.url;
             
-            // Update preview immediately with the new URL
+            // Update state with the new URL
             setPreviewUrl(imageUrl);
+            setUploadedUrl(imageUrl);
             
-            // Clean up the object URL since we're using the uploaded URL now
+            // Clean up the object URL
             URL.revokeObjectURL(objectUrl);
             
+            // Call the callback if provided
             if (onUploadComplete) {
                 onUploadComplete(imageUrl);
             }
@@ -62,30 +102,43 @@ export const ProfilePictureUpload: React.FC<ProfilePictureUploadProps> = ({
             console.error('Error uploading image:', error);
             const errorMessage = error?.message || 'Failed to upload profile picture. Please try again.';
             alert(errorMessage);
-            // Revert to original image on error
-            setPreviewUrl(currentImageUrl || null);
+            
+            // Revert to the last uploaded URL or current image URL
+            const fallbackUrl = uploadedUrl || normalizeImageUrl(currentImageUrl);
+            setPreviewUrl(fallbackUrl);
+            
             // Clean up the object URL on error
             URL.revokeObjectURL(objectUrl);
         } finally {
             setIsUploading(false);
-            // Reset file input so the same file can be selected again if needed
+            isUploadingRef.current = false;
+            
+            // Reset file input
             if (fileInputRef.current) {
                 fileInputRef.current.value = '';
             }
         }
-    };
+    }, [currentImageUrl, uploadedUrl, onUploadComplete, normalizeImageUrl]);
+
+    // Determine what to display
+    const displayUrl = previewUrl || normalizeImageUrl(currentImageUrl);
 
     return (
         <div className="flex flex-col items-center gap-4">
             <div className="relative group">
                 <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-white shadow-lg bg-slate-100 dark:bg-slate-800">
-                    {previewUrl ? (
+                    {displayUrl ? (
                         <Image
-                            src={previewUrl}
+                            src={displayUrl}
                             alt="Profile"
                             width={128}
                             height={128}
                             className="w-full h-full object-cover"
+                            unoptimized={displayUrl.startsWith('blob:')}
+                            onError={() => {
+                                // Fallback if image fails to load
+                                setPreviewUrl(null);
+                            }}
                         />
                     ) : (
                         <div className="w-full h-full flex items-center justify-center text-slate-400">
@@ -94,9 +147,11 @@ export const ProfilePictureUpload: React.FC<ProfilePictureUploadProps> = ({
                     )}
                 </div>
                 <button
+                    type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="absolute bottom-0 right-0 p-2 rounded-full bg-primary-600 text-white shadow-lg hover:bg-primary-700 transition-colors"
+                    className="absolute bottom-0 right-0 p-2 rounded-full bg-primary-600 text-white shadow-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     disabled={isUploading}
+                    aria-label="Upload profile picture"
                 >
                     {isUploading ? (
                         <Loader2 className="w-5 h-5 animate-spin" />
@@ -111,10 +166,11 @@ export const ProfilePictureUpload: React.FC<ProfilePictureUploadProps> = ({
                 onChange={handleFileSelect}
                 accept="image/*"
                 className="hidden"
+                disabled={isUploading}
             />
             <div className="text-center">
                 <p className="text-sm text-slate-500 dark:text-slate-400">
-                    Click the camera icon to update your photo
+                    {isUploading ? 'Uploading...' : 'Click the camera icon to update your photo'}
                 </p>
             </div>
         </div>

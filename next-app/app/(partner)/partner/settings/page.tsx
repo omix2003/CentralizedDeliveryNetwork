@@ -97,10 +97,17 @@ export default function PartnerSettingsPage() {
             <ProfilePictureUpload
               currentImageUrl={session?.user?.image}
               onUploadComplete={async (url) => {
-                // Update session to get the new profile picture
-                await update();
-                // Refresh router to update any cached data
-                router.refresh();
+                try {
+                  // Force session update to get the new profile picture
+                  await update();
+                  // Small delay to ensure session is updated
+                  await new Promise(resolve => setTimeout(resolve, 500));
+                  // Refresh router to update any cached data
+                  router.refresh();
+                } catch (error) {
+                  console.error('Error updating session:', error);
+                  // Even if update fails, the image should still be visible from the upload
+                }
               }}
             />
           </div>

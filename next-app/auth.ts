@@ -1,6 +1,7 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { authApi } from "@/lib/api/auth";
+import { getImageUrl } from "@/lib/utils/imageUrl";
 
 type UserRole = 'AGENT' | 'PARTNER' | 'ADMIN';
 
@@ -174,7 +175,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           session.user.partnerId = (token.partnerId as string) || undefined;
           session.accessToken = token.accessToken as string; // Add accessToken to session
 
-          // Fetch latest profile picture from DB
+          // Fetch latest profile picture from DB and convert to full URL
           try {
             // We need to dynamically import prisma to avoid circular dependencies if any
             const { prisma } = await import('@/lib/prisma');
@@ -182,9 +183,15 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
               where: { id: token.id as string },
               select: { profilePicture: true }
             });
-            session.user.image = dbUser?.profilePicture;
+            // Convert relative path to full URL
+            if (dbUser?.profilePicture) {
+              session.user.image = getImageUrl(dbUser.profilePicture);
+            } else {
+              session.user.image = null;
+            }
           } catch (e) {
             console.error('Failed to fetch profile picture', e);
+            session.user.image = null;
           }
         }
         return session;
