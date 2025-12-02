@@ -1,8 +1,25 @@
 import axios from 'axios';
 import { getSession } from 'next-auth/react';
 
+// Validate and normalize API URL
+const getApiBaseURL = () => {
+  const envURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+  
+  // Ensure the URL ends with /api
+  if (envURL && !envURL.endsWith('/api')) {
+    // If it doesn't end with /api, add it
+    const normalized = envURL.endsWith('/') ? `${envURL}api` : `${envURL}/api`;
+    if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+      console.warn(`[API Client] NEXT_PUBLIC_API_URL should end with '/api'. Normalized: ${normalized}`);
+    }
+    return normalized;
+  }
+  
+  return envURL;
+};
+
 const apiClient = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api',
+  baseURL: getApiBaseURL(),
   headers: {
     'Content-Type': 'application/json',
   },
@@ -47,15 +64,15 @@ apiClient.interceptors.response.use(
   (error) => {
     // Handle network errors (no response from server)
     if (!error.response) {
-      const baseURL = error.config?.baseURL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+      const baseURL = error.config?.baseURL || getApiBaseURL();
       const url = error.config?.url || '';
       const fullURL = `${baseURL}${url}`;
       
       let errorMessage = 'Network Error';
       if (error.code === 'ECONNREFUSED' || error.message === 'Network Error') {
-        errorMessage = `Cannot connect to backend server at ${baseURL}. Please make sure the backend server is running on port 5000.`;
-      } else if (error.code === 'ETIMEDOUT') {
-        errorMessage = `Request to ${fullURL} timed out. The server may be slow or unavailable.`;
+        errorMessage = `Cannot connect to backend server at ${baseURL}. Please make sure the backend server is running and NEXT_PUBLIC_API_URL is set correctly.`;
+      } else if (error.code === 'ETIMEDOUT' || error.code === 'ECONNABORTED') {
+        errorMessage = `Request to ${fullURL} timed out after 30 seconds. The backend server may be sleeping (Render free tier) or slow to respond. Try again in a few seconds.`;
       } else if (error.message) {
         errorMessage = `Network error: ${error.message}`;
       }
@@ -91,7 +108,7 @@ apiClient.interceptors.response.use(
 
 // Server-side API client (no interceptor, no getSession)
 export const serverApiClient = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api',
+  baseURL: getApiBaseURL(),
   headers: {
     'Content-Type': 'application/json',
   },

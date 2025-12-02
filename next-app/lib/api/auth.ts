@@ -79,16 +79,55 @@ export const authApi = {
   register: async (data: RegisterData): Promise<AuthResponse> => {
     try {
       const client = getApiClient();
+      const baseURL = client.defaults.baseURL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+      
+      // Validate that we have a proper baseURL (not empty or relative)
+      if (!baseURL || baseURL.startsWith('/') || !baseURL.startsWith('http')) {
+        const errorMsg = `Invalid API URL configuration. NEXT_PUBLIC_API_URL is not set or invalid. Current value: ${baseURL || 'undefined'}. Please set NEXT_PUBLIC_API_URL in your environment variables.`;
+        console.error('[API]', errorMsg);
+        throw new Error('Backend API URL is not configured. Please contact support.');
+      }
+      
+      console.log('[API] Attempting registration to:', `${baseURL}/auth/register`);
+      console.log('[API] Using client:', typeof window === 'undefined' ? 'serverApiClient' : 'apiClient');
+      
       const response = await client.post<AuthResponse>('/auth/register', data);
+      
+      console.log('[API] Registration response status:', response.status);
+      
+      if (!response.data) {
+        throw new Error('No data received from server');
+      }
+      
       return response.data;
     } catch (error: any) {
       if (error.response) {
+        // Backend responded with error
+        const status = error.response.status;
         const message = error.response.data?.error || error.response.data?.message || 'Registration failed';
+        console.error('[API] Backend error response:', {
+          status,
+          data: error.response.data,
+          message,
+          url: error.config?.url,
+          baseURL: error.config?.baseURL
+        });
         throw new Error(message);
       } else if (error.request) {
-        throw new Error('Cannot connect to backend server. Please make sure it is running on port 5000.');
+        // Request was made but no response received
+        const requestURL = error.config?.url || '/auth/register';
+        const requestBaseURL = error.config?.baseURL || 'unknown';
+        console.error('[API] No response from backend:', {
+          url: requestURL,
+          baseURL: requestBaseURL,
+          fullURL: `${requestBaseURL}${requestURL}`
+        });
+        throw new Error(`Cannot connect to backend server at ${requestBaseURL}. Please make sure the backend is running and NEXT_PUBLIC_API_URL is set correctly.`);
       } else {
-        throw new Error(error.message || 'An error occurred during registration');
+        // Error setting up request
+        const errorMsg = error?.message || String(error) || 'An error occurred during registration';
+        console.error('[API] Request setup error:', errorMsg);
+        throw new Error(errorMsg);
       }
     }
   },
