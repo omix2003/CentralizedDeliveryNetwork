@@ -129,6 +129,7 @@ export const partnerController = {
       // This will find nearby agents and offer the order to them
       // Assignment happens when an agent accepts the order
       const { assignOrder } = await import('../services/assignment.service');
+      console.log(`[Partner] Triggering assignment for order ${order.id} at (${order.pickupLat}, ${order.pickupLng})`);
       assignOrder({
         orderId: order.id,
         pickupLat: order.pickupLat,
@@ -138,10 +139,19 @@ export const partnerController = {
         maxRadius: 5000, // 5km
         maxAgentsToOffer: 5,
         offerTimeout: 30, // 30 seconds
-      }).catch((error) => {
-        // Log error but don't fail order creation
-        console.error('[Partner] Failed to trigger assignment engine:', error);
-      });
+      })
+        .then((result) => {
+          console.log(`[Partner] Assignment result for order ${order.id}:`, {
+            success: result.success,
+            agentsOffered: result.agentsOffered,
+            assigned: result.assigned,
+            error: result.error,
+          });
+        })
+        .catch((error) => {
+          // Log error but don't fail order creation
+          console.error('[Partner] Failed to trigger assignment engine:', error);
+        });
 
       // Notify partner via webhook (optional - for confirmation)
       await notifyPartner(
