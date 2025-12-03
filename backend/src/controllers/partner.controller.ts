@@ -1,8 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../lib/prisma';
-import { getPartnerId } from '../utils/role.util';
+import { getPartnerId, getUserId } from '../utils/role.util';
 import { notifyPartner } from '../lib/webhook';
-import { OrderStatus } from '@prisma/client';
+import { OrderStatus, EventType, ActorType } from '@prisma/client';
+import { eventService } from '../services/event.service';
+import { cacheService, cacheKeys } from '../services/cache.service';
 
 export const partnerController = {
   // GET /api/partner/profile
@@ -11,6 +13,13 @@ export const partnerController = {
       const partnerId = getPartnerId(req);
       if (!partnerId) {
         return res.status(404).json({ error: 'Partner profile not found' });
+      }
+
+      // Try cache first (TTL: 5 minutes)
+      const cacheKey = cacheKeys.partner.profile(partnerId);
+      const cached = await cacheService.get(cacheKey);
+      if (cached) {
+        return res.json(cached);
       }
 
       const partner = await prisma.partner.findUnique({
@@ -31,14 +40,19 @@ export const partnerController = {
         return res.status(404).json({ error: 'Partner not found' });
       }
 
-      res.json({
+      const response = {
         id: partner.id,
         companyName: partner.companyName,
         apiKey: partner.apiKey,
         webhookUrl: partner.webhookUrl,
         isActive: partner.isActive,
         user: partner.user,
-      });
+      };
+
+      // Cache the response
+      await cacheService.set(cacheKey, response, 300); // 5 minutes
+
+      res.json(response);
     } catch (error) {
       next(error);
     }
@@ -59,9 +73,59 @@ export const partnerController = {
         data: { webhookUrl },
       });
 
+      // Invalidate cache
+      await cacheService.invalidate(cacheKeys.partner.profile(partnerId));
+
       res.json({
         id: partner.id,
         webhookUrl: partner.webhookUrl,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // POST /api/partner/regenerate-api-key
+  async regenerateApiKey(req: Request, res: Response, next: NextFunction) {
+    try {
+      const partnerId = getPartnerId(req);
+      if (!partnerId) {
+        return res.status(404).json({ error: 'Partner profile not found' });
+      }
+
+      // Generate new API key using the same format as registration
+      const newApiKey = `pk_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+
+      const partner = await prisma.partner.update({
+        where: { id: partnerId },
+        data: { apiKey: newApiKey },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true,
+            },
+          },
+        },
+      });
+
+      // Log API key regeneration event
+      eventService.logPartnerEvent(
+        EventType.ORDER_CREATED, // We'll need to add a new event type, but using existing for now
+        partnerId,
+        partner.user.id,
+        { action: 'API_KEY_REGENERATED' }
+      );
+
+      // Invalidate cache
+      await cacheService.invalidate(cacheKeys.partner.profile(partnerId));
+
+      res.json({
+        id: partner.id,
+        apiKey: partner.apiKey,
+        message: 'API key regenerated successfully. Please update your integrations with the new key.',
       });
     } catch (error) {
       next(error);
@@ -118,6 +182,7 @@ export const partnerController = {
               user: {
                 select: {
                   name: true,
+                  id: true,
                 },
               },
             },
@@ -125,10 +190,25 @@ export const partnerController = {
         },
       });
 
+      // Log order creation event
+      eventService.logOrderEvent(
+        EventType.ORDER_CREATED,
+        order.id,
+        ActorType.PARTNER,
+        order.partner.user.id,
+        {
+          partnerId,
+          payoutAmount,
+          priority,
+          estimatedDuration,
+        }
+      );
+
       // Trigger order assignment engine (Phase 5)
       // This will find nearby agents and offer the order to them
       // Assignment happens when an agent accepts the order
       const { assignOrder } = await import('../services/assignment.service');
+      console.log(`[Partner] Triggering assignment for order ${order.id} at (${order.pickupLat}, ${order.pickupLng})`);
       assignOrder({
         orderId: order.id,
         pickupLat: order.pickupLat,
@@ -138,10 +218,19 @@ export const partnerController = {
         maxRadius: 5000, // 5km
         maxAgentsToOffer: 5,
         offerTimeout: 30, // 30 seconds
-      }).catch((error) => {
-        // Log error but don't fail order creation
-        console.error('[Partner] Failed to trigger assignment engine:', error);
-      });
+      })
+        .then((result) => {
+          console.log(`[Partner] Assignment result for order ${order.id}:`, {
+            success: result.success,
+            agentsOffered: result.agentsOffered,
+            assigned: result.assigned,
+            error: result.error,
+          });
+        })
+        .catch((error) => {
+          // Log error but don't fail order creation
+          console.error('[Partner] Failed to trigger assignment engine:', error);
+        });
 
       // Notify partner via webhook (optional - for confirmation)
       await notifyPartner(
@@ -609,6 +698,13 @@ export const partnerController = {
         return res.status(404).json({ error: 'Partner profile not found' });
       }
 
+      // Try cache first (TTL: 2 minutes - dashboard data changes frequently)
+      const cacheKey = cacheKeys.partner.dashboard(partnerId);
+      const cached = await cacheService.get(cacheKey);
+      if (cached) {
+        return res.json(cached);
+      }
+
       const now = new Date();
       const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
       const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -683,13 +779,82 @@ export const partnerController = {
         ? ((thisMonthOrders - lastMonthOrders) / lastMonthOrders) * 100
         : 0;
 
-      res.json({
+      const response = {
         todayOrders,
         monthlyOrders: thisMonthOrders,
         monthlyTrend: Math.round(monthlyTrend),
         activeOrders,
         deliveryIssues: cancelledOrders,
         totalDeliveries: totalCompletedOrders,
+      };
+
+      // Cache the response (2 minutes TTL)
+      await cacheService.set(cacheKey, response, 120);
+
+      res.json(response);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // GET /api/partner/analytics/heatmap - Get order locations for heatmap
+  async getOrderHeatmap(req: Request, res: Response, next: NextFunction) {
+    try {
+      const partnerId = getPartnerId(req);
+      if (!partnerId) {
+        return res.status(404).json({ error: 'Partner profile not found' });
+      }
+
+      const { startDate, endDate } = req.query;
+      
+      // Default to last 30 days if not specified
+      const start = startDate 
+        ? new Date(startDate as string)
+        : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const end = endDate 
+        ? new Date(endDate as string)
+        : new Date();
+
+      // Get order locations (pickup and dropoff points)
+      const orders = await prisma.order.findMany({
+        where: {
+          partnerId,
+          createdAt: { gte: start, lte: end },
+        },
+        select: {
+          pickupLat: true,
+          pickupLng: true,
+          dropLat: true,
+          dropLng: true,
+          status: true,
+          createdAt: true,
+        },
+      });
+
+      // Format data for heatmap: [lng, lat, intensity]
+      const heatmapData = orders.flatMap((order) => [
+        {
+          location: [order.pickupLng, order.pickupLat] as [number, number],
+          type: 'pickup' as const,
+          status: order.status,
+          date: order.createdAt.toISOString(),
+        },
+        {
+          location: [order.dropLng, order.dropLat] as [number, number],
+          type: 'dropoff' as const,
+          status: order.status,
+          date: order.createdAt.toISOString(),
+        },
+      ]);
+
+      res.json({
+        data: heatmapData,
+        bounds: orders.length > 0 ? {
+          minLng: Math.min(...orders.map(o => Math.min(o.pickupLng, o.dropLng))),
+          maxLng: Math.max(...orders.map(o => Math.max(o.pickupLng, o.dropLng))),
+          minLat: Math.min(...orders.map(o => Math.min(o.pickupLat, o.dropLat))),
+          maxLat: Math.max(...orders.map(o => Math.max(o.pickupLat, o.dropLat))),
+        } : null,
       });
     } catch (error) {
       next(error);
@@ -859,6 +1024,147 @@ export const partnerController = {
         message: error.message,
         stack: error.stack,
       });
+      next(error);
+    }
+  },
+
+  // GET /api/partner/support/tickets - Get partner's support tickets
+  async getSupportTickets(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = getUserId(req);
+      const partnerId = getPartnerId(req);
+      
+      if (!userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const { status, page = '1', limit = '20' } = req.query;
+      const pageNum = parseInt(page as string, 10);
+      const limitNum = parseInt(limit as string, 10);
+      const skip = (pageNum - 1) * limitNum;
+
+      const where: any = {
+        userId,
+        ...(partnerId ? { partnerId } : {}),
+      };
+
+      if (status && status !== 'ALL') {
+        where.status = status;
+      }
+
+      const [tickets, total] = await Promise.all([
+        prisma.supportTicket.findMany({
+          where,
+          include: {
+            order: {
+              select: {
+                id: true,
+                status: true,
+              },
+            },
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+          skip,
+          take: limitNum,
+        }),
+        prisma.supportTicket.count({ where }),
+      ]);
+
+      res.json({
+        tickets: tickets.map((ticket: any) => ({
+          id: ticket.id,
+          issueType: ticket.issueType,
+          description: ticket.description,
+          status: ticket.status,
+          resolvedAt: ticket.resolvedAt,
+          createdAt: ticket.createdAt.toISOString(),
+          updatedAt: ticket.updatedAt.toISOString(),
+          order: ticket.order || null,
+        })),
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total,
+          totalPages: Math.ceil(total / limitNum),
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // POST /api/partner/support/tickets - Create support ticket
+  async createSupportTicket(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = getUserId(req);
+      const partnerId = getPartnerId(req);
+      
+      if (!userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const { orderId, issueType, description } = req.body;
+
+      if (!issueType || !description) {
+        return res.status(400).json({ error: 'Issue type and description are required' });
+      }
+
+      if (!['DELAY', 'MISSING', 'DAMAGE', 'OTHER'].includes(issueType)) {
+        return res.status(400).json({ error: 'Invalid issue type' });
+      }
+
+      // Verify order exists and belongs to partner if orderId is provided
+      if (orderId) {
+        const order = await prisma.order.findUnique({
+          where: { id: orderId },
+        });
+
+        if (!order) {
+          return res.status(404).json({ error: 'Order not found' });
+        }
+
+        if (order.partnerId !== partnerId) {
+          return res.status(403).json({ error: 'You can only create tickets for your own orders' });
+        }
+      }
+
+      const ticket = await prisma.supportTicket.create({
+        data: {
+          userId,
+          partnerId: partnerId || null,
+          orderId: orderId || null,
+          issueType,
+          description,
+          status: 'OPEN',
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+          order: {
+            select: {
+              id: true,
+              status: true,
+            },
+          },
+        },
+      });
+
+      res.status(201).json({
+        id: ticket.id,
+        issueType: ticket.issueType,
+        description: ticket.description,
+        status: ticket.status,
+        createdAt: ticket.createdAt.toISOString(),
+        message: 'Support ticket created successfully',
+      });
+    } catch (error) {
       next(error);
     }
   },

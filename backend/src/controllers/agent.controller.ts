@@ -1,8 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../lib/prisma';
-import { getAgentId, isAdmin } from '../utils/role.util';
+import { getAgentId, getUserId, isAdmin } from '../utils/role.util';
 import { redisGeo } from '../lib/redis';
 import { notifyPartner } from '../lib/webhook';
+import { EventType, ActorType } from '@prisma/client';
+import { eventService } from '../services/event.service';
 import path from 'path';
 import fs from 'fs';
 
@@ -157,6 +159,18 @@ export const agentController = {
         data: { lastOnlineAt: new Date() },
       });
 
+      // Log location update event (throttled - only log every 30 seconds to avoid spam)
+      const userId = getUserId(req);
+      eventService.logAgentEvent(
+        EventType.AGENT_LOCATION_UPDATE,
+        agentId,
+        userId ?? undefined,
+        {
+          latitude,
+          longitude,
+        }
+      );
+
       res.json({ message: 'Location updated successfully' });
     } catch (error) {
       next(error);
@@ -207,7 +221,27 @@ export const agentController = {
       const agent = await prisma.agent.update({
         where: { id: agentId },
         data: updateData,
+        include: {
+          user: {
+            select: {
+              id: true,
+            },
+          },
+        },
       });
+
+      // Log agent status change event
+      const userId = agent.user.id;
+      const eventType = status === 'ONLINE' ? EventType.AGENT_ONLINE : EventType.AGENT_OFFLINE;
+      eventService.logAgentEvent(
+        eventType,
+        agentId,
+        userId,
+        {
+          previousStatus: agent.status === 'ONLINE' ? 'OFFLINE' : 'ONLINE',
+          newStatus: status,
+        }
+      );
 
       res.json({
         id: agent.id,
@@ -415,6 +449,20 @@ export const agentController = {
         }
       );
 
+      // Log order acceptance event
+      const userId = getUserId(req);
+      eventService.logOrderEvent(
+        EventType.ORDER_ACCEPTED,
+        orderId,
+        ActorType.AGENT,
+        userId ?? undefined,
+        {
+          agentId,
+          partnerId: updatedOrder.partnerId,
+          payoutAmount: updatedOrder.payoutAmount,
+        }
+      );
+
       res.json({
         id: updatedOrder.id,
         status: updatedOrder.status,
@@ -434,6 +482,22 @@ export const agentController = {
       const agentId = getAgentId(req);
       if (!agentId) {
         return res.status(404).json({ error: 'Agent profile not found' });
+      }
+
+      const orderId = req.params.id;
+      const userId = getUserId(req);
+
+      // Log order rejection event
+      if (orderId) {
+        eventService.logOrderEvent(
+          EventType.ORDER_REJECTED,
+          orderId,
+          ActorType.AGENT,
+          userId ?? undefined,
+          {
+            agentId,
+          }
+        );
       }
 
       // For now, rejection just means not accepting
@@ -459,14 +523,10 @@ export const agentController = {
       };
 
       // Filter by status if provided
-      if (status) {
+      if (status && status !== 'ALL') {
         where.status = status;
-      } else {
-        // Default: get active orders (not completed or cancelled)
-        where.status = {
-          in: ['ASSIGNED', 'PICKED_UP', 'OUT_FOR_DELIVERY'],
-        };
       }
+      // If status is 'ALL' or not provided, return all orders (including past/completed ones)
 
       const orders = await prisma.order.findMany({
         where,
@@ -687,6 +747,40 @@ export const agentController = {
           pickedUpAt: updatedOrder.pickedUpAt,
           deliveredAt: updatedOrder.deliveredAt,
           cancelledAt: updatedOrder.cancelledAt,
+          cancellationReason: updatedOrder.cancellationReason,
+        }
+      );
+
+      // Log order status update event
+      const userId = getUserId(req);
+      let eventType: EventType;
+      switch (status) {
+        case 'PICKED_UP':
+          eventType = EventType.ORDER_PICKED_UP;
+          break;
+        case 'OUT_FOR_DELIVERY':
+          eventType = EventType.ORDER_OUT_FOR_DELIVERY;
+          break;
+        case 'DELIVERED':
+          eventType = EventType.ORDER_DELIVERED;
+          break;
+        case 'CANCELLED':
+          eventType = EventType.ORDER_CANCELLED;
+          break;
+        default:
+          eventType = EventType.ORDER_ASSIGNED;
+      }
+      
+      eventService.logOrderEvent(
+        eventType,
+        orderId,
+        ActorType.AGENT,
+        userId ?? undefined,
+        {
+          agentId,
+          previousStatus: order.status,
+          newStatus: status,
+          actualDuration: updatedOrder.actualDuration,
           cancellationReason: updatedOrder.cancellationReason,
         }
       );
@@ -947,6 +1041,147 @@ export const agentController = {
       });
 
       res.json({ message: 'Document deleted successfully' });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // GET /api/agent/support/tickets - Get agent's support tickets
+  async getSupportTickets(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = getUserId(req);
+      const agentId = getAgentId(req);
+      
+      if (!userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const { status, page = '1', limit = '20' } = req.query;
+      const pageNum = parseInt(page as string, 10);
+      const limitNum = parseInt(limit as string, 10);
+      const skip = (pageNum - 1) * limitNum;
+
+      const where: any = {
+        userId,
+        ...(agentId ? { agentId } : {}),
+      };
+
+      if (status && status !== 'ALL') {
+        where.status = status;
+      }
+
+      const [tickets, total] = await Promise.all([
+        prisma.supportTicket.findMany({
+          where,
+          include: {
+            order: {
+              select: {
+                id: true,
+                status: true,
+              },
+            },
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+          skip,
+          take: limitNum,
+        }),
+        prisma.supportTicket.count({ where }),
+      ]);
+
+      res.json({
+        tickets: tickets.map((ticket: any) => ({
+          id: ticket.id,
+          issueType: ticket.issueType,
+          description: ticket.description,
+          status: ticket.status,
+          resolvedAt: ticket.resolvedAt,
+          createdAt: ticket.createdAt.toISOString(),
+          updatedAt: ticket.updatedAt.toISOString(),
+          order: ticket.order || null,
+        })),
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total,
+          totalPages: Math.ceil(total / limitNum),
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // POST /api/agent/support/tickets - Create support ticket
+  async createSupportTicket(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = getUserId(req);
+      const agentId = getAgentId(req);
+      
+      if (!userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const { orderId, issueType, description } = req.body;
+
+      if (!issueType || !description) {
+        return res.status(400).json({ error: 'Issue type and description are required' });
+      }
+
+      if (!['DELAY', 'MISSING', 'DAMAGE', 'OTHER'].includes(issueType)) {
+        return res.status(400).json({ error: 'Invalid issue type' });
+      }
+
+      // Verify order exists and belongs to agent if orderId is provided
+      if (orderId) {
+        const order = await prisma.order.findUnique({
+          where: { id: orderId },
+        });
+
+        if (!order) {
+          return res.status(404).json({ error: 'Order not found' });
+        }
+
+        if (order.agentId !== agentId) {
+          return res.status(403).json({ error: 'You can only create tickets for your own orders' });
+        }
+      }
+
+      const ticket = await prisma.supportTicket.create({
+        data: {
+          userId,
+          agentId: agentId || null,
+          orderId: orderId || null,
+          issueType,
+          description,
+          status: 'OPEN',
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+          order: {
+            select: {
+              id: true,
+              status: true,
+            },
+          },
+        },
+      });
+
+      res.status(201).json({
+        id: ticket.id,
+        issueType: ticket.issueType,
+        description: ticket.description,
+        status: ticket.status,
+        createdAt: ticket.createdAt.toISOString(),
+        message: 'Support ticket created successfully',
+      });
     } catch (error) {
       next(error);
     }

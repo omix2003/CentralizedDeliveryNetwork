@@ -14,6 +14,7 @@ router.use(requirePartner);
 // Partner profile routes
 router.get('/profile', partnerController.getProfile);
 router.put('/webhook', validate(updateWebhookSchema), partnerController.updateWebhook);
+router.post('/regenerate-api-key', partnerController.regenerateApiKey);
 
 // Partner order routes
 router.post('/orders', validate(createOrderSchema), partnerController.createOrder);
@@ -24,5 +25,10 @@ router.put('/orders/:id', validate(updateOrderSchema), partnerController.updateO
 // Partner dashboard and analytics
 router.get('/dashboard', partnerController.getDashboardMetrics);
 router.get('/analytics', partnerController.getAnalytics);
+router.get('/analytics/heatmap', partnerController.getOrderHeatmap);
+
+// Support tickets
+router.get('/support/tickets', partnerController.getSupportTickets);
+router.post('/support/tickets', partnerController.createSupportTicket);
 
 export default router;

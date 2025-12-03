@@ -44,4 +44,19 @@ router.post('/documents/:id/verify', adminController.verifyDocument);
 router.post('/documents/:id/reject', adminController.rejectDocument);
 router.post('/agents/:id/verify-kyc', adminController.verifyAgentKYC);
 
+// ==================== SUPPORT TICKETS ====================
+router.get('/support/tickets', adminController.getSupportTickets);
+router.get('/support/tickets/:id', adminController.getSupportTicketDetails);
+router.put('/support/tickets/:id/status', adminController.updateTicketStatus);
+router.post('/support/tickets/:id/resolve', adminController.resolveTicket);
+
+// ==================== ANALYTICS ====================
+router.get('/analytics/overview', adminController.getAnalyticsOverview);
+router.get('/analytics/revenue', adminController.getRevenueAnalytics);
+router.get('/analytics/performance', adminController.getPerformanceAnalytics);
+
+// ==================== SETTINGS ====================
+router.get('/settings', adminController.getSettings);
+router.put('/settings', adminController.updateSettings);
+
 export default router;

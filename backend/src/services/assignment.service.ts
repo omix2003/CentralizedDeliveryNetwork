@@ -87,6 +87,29 @@ function calculateAgentScore(
 }
 
 /**
+ * Calculate distance between two coordinates using Haversine formula
+ * Returns distance in meters
+ */
+function calculateDistance(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  const R = 6371000; // Earth's radius in meters
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+/**
  * Find and score nearby agents for an order
  */
 async function findAndScoreAgents(
@@ -104,8 +127,86 @@ async function findAndScoreAgents(
     'm'
   );
 
+  // If Redis returns no agents, fallback to database query
   if (!nearbyAgents || nearbyAgents.length === 0) {
-    return [];
+    console.log('[Assignment] No agents found via Redis GEO, falling back to database query');
+    
+    // Fallback: Get all online, approved agents and calculate distance
+    const allAgents = await prisma.agent.findMany({
+      where: {
+        status: 'ONLINE',
+        isApproved: true,
+        isBlocked: false,
+      },
+      include: {
+        locationHistory: {
+          orderBy: {
+            timestamp: 'desc',
+          },
+          take: 1, // Get most recent location
+        },
+      },
+    });
+
+    // Filter agents by distance using their last known location
+    const agentsWithDistance = allAgents
+      .map((agent) => {
+        const lastLocation = agent.locationHistory[0];
+        if (!lastLocation) {
+          return null; // Skip agents without location history
+        }
+
+        const distance = calculateDistance(
+          pickupLat,
+          pickupLng,
+          lastLocation.latitude,
+          lastLocation.longitude
+        );
+
+        if (distance > maxRadius) {
+          return null; // Outside radius
+        }
+
+        return {
+          agent,
+          distance,
+        };
+      })
+      .filter((item): item is { agent: typeof allAgents[0]; distance: number } => item !== null);
+
+    // Convert to AgentScore format
+    const scoredAgents: AgentScore[] = agentsWithDistance
+      .map(({ agent, distance }) => {
+        const score = calculateAgentScore(
+          {
+            acceptanceRate: agent.acceptanceRate,
+            rating: agent.rating,
+            totalOrders: agent.totalOrders,
+            currentOrderId: agent.currentOrderId,
+          },
+          distance,
+          payoutAmount,
+          priority
+        );
+
+        return {
+          agentId: agent.id,
+          distance,
+          score,
+          agent: {
+            id: agent.id,
+            acceptanceRate: agent.acceptanceRate,
+            rating: agent.rating,
+            totalOrders: agent.totalOrders,
+            currentOrderId: agent.currentOrderId,
+          },
+        };
+      })
+      .filter((scored) => scored.score > 0)
+      .sort((a, b) => b.score - a.score);
+
+    console.log(`[Assignment] Found ${scoredAgents.length} agents via database fallback`);
+    return scoredAgents;
   }
 
   // Parse Redis GEO response
@@ -391,6 +492,20 @@ async function assignOrderToAgent(
 
     // Send FCM notification to agent
     await sendOrderAssignedNotification(agentId, orderId);
+
+    // Log order assignment event (system-assigned)
+    const { eventService } = await import('./event.service');
+    const { EventType, ActorType } = await import('@prisma/client');
+    await eventService.logOrderEvent(
+      EventType.ORDER_ASSIGNED,
+      orderId,
+      ActorType.SYSTEM,
+      undefined,
+      {
+        agentId,
+        autoAssigned: true,
+      }
+    );
 
     return { success: true, order: result };
   } catch (error: any) {

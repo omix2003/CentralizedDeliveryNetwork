@@ -1,0 +1,15 @@
+[build]
+  base = "next-app"
+  command = "npm run build"
+  # Publish directory is handled automatically by @netlify/plugin-nextjs
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+[build.environment]
+  NODE_VERSION = "20"
+  # Whitelist expected public environment variables (these are intentionally public)
+  SECRETS_SCAN_OMIT_KEYS = "NEXT_PUBLIC_API_URL,NEXT_PUBLIC_GOOGLE_MAPS_API_KEY,NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN,NEXTAUTH_URL"
+  # Exclude build output directories from secrets scanning
+  SECRETS_SCAN_OMIT_PATHS = ".next/**,.netlify/**,node_modules/**"
+
