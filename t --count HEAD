@@ -1,0 +1,20 @@
+* [33m5306aa5[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32m2/12/2025[m[33m, [m[1;31morigin/2/12/2025[m[33m, [m[1;32m1/12/2025[m[33m)[m Add database query optimization and Redis caching strategy - Phase 10.1
+* [33m10f07e0[m Add partner integration guide - Phase 10.4
+* [33m6c604ed[m Add comprehensive API documentation - Phase 10.4
+* [33m6aebc80[m Add comprehensive event logging system - Phase 8.1
+* [33m7c449ec[m Add partner API key regeneration feature - Phase 6.4
+* [33m4e5d8e8[m[33m ([m[1;31morigin/1/12/2025[m[33m)[m Fix CORS for static file serving - add explicit headers for uploads and support multiple origins
+* [33mfc32e86[m Fix production profile picture display - use regular img tag for external images and add debug logging
+* [33m1b9ee36[m Fix profile picture display in production - improve URL handling and add fallback
+* [33made8003[m Fix profile picture display - use unoptimized for external backend images
+* [33m07e6d88[m Configure Next.js Image component to allow backend server images
+* [33mff5fbe8[m Rewrite complete profile picture upload logic - fix state management and session refresh
+* [33md51d820[m Fix photo upload reset issue - update preview state and use session refresh instead of page reload
+* [33me62d0fc[m Fix photo upload: Remove explicit Content-Type header, add better error logging, use imageUrl utility
+* [33m90c906b[m Fix mixed content error: Replace hardcoded localhost URLs with environment-based image URLs
+* [33ma170163[m Fix all TypeScript errors: Add type annotations and fix type mismatches
+* [33m89e8cb3[m Fix TypeScript error: Add explicit type annotations to map functions
+* [33m08a1f7b[m Fix TypeScript error: Remove trend={null} props from MetricCard components
+* [33m51a74d6[m Fix TypeScript error: Convert analytics export object to array for CSV export
+* [33ma137cb1[m Fix TypeScript error for adminNotes field in SupportTicket update
+* [33m0b621a4[m Add order tracking, admin pages, support tickets, and improve error handling

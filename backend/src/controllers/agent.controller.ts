@@ -164,7 +164,7 @@ export const agentController = {
       eventService.logAgentEvent(
         EventType.AGENT_LOCATION_UPDATE,
         agentId,
-        userId,
+        userId ?? undefined,
         {
           latitude,
           longitude,
@@ -455,7 +455,7 @@ export const agentController = {
         EventType.ORDER_ACCEPTED,
         orderId,
         ActorType.AGENT,
-        userId,
+        userId ?? undefined,
         {
           agentId,
           partnerId: updatedOrder.partnerId,
@@ -493,7 +493,7 @@ export const agentController = {
           EventType.ORDER_REJECTED,
           orderId,
           ActorType.AGENT,
-          userId,
+          userId ?? undefined,
           {
             agentId,
           }
@@ -775,7 +775,7 @@ export const agentController = {
         eventType,
         orderId,
         ActorType.AGENT,
-        userId,
+        userId ?? undefined,
         {
           agentId,
           previousStatus: order.status,

@@ -151,10 +151,10 @@ export default function PartnerOrdersPage() {
         <div className="grid gap-4">
           {filteredOrders.map((order) => (
             <Card key={order.id} className="hover:shadow-md transition-shadow">
-              <CardContent className="p-6">
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <div className="flex items-center gap-3 mb-2">
+              <CardContent className="p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-1.5">
                       <h3 className="text-lg font-semibold text-gray-900">
                         #{order.trackingNumber}
                       </h3>
@@ -164,7 +164,7 @@ export default function PartnerOrdersPage() {
                       Created: {formatDate(order.createdAt)}
                     </p>
                   </div>
-                  <div className="text-right">
+                  <div className="text-right ml-4 flex flex-col items-end gap-2">
                     <p className="text-2xl font-bold text-green-600">
                       ${order.payout.toFixed(2)}
                     </p>

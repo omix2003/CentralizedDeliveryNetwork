@@ -361,7 +361,7 @@ export const adminController = {
       const userId = getUserId(req);
       await eventService.logAdminEvent(
         EventType.AGENT_ONLINE, // Using existing event type, metadata will clarify it's approval
-        userId,
+        userId ?? undefined,
         'AGENT',
         id,
         {
@@ -408,7 +408,7 @@ export const adminController = {
       const userId = getUserId(req);
       await eventService.logAdminEvent(
         EventType.AGENT_OFFLINE, // Using existing event type, metadata will clarify it's blocking
-        userId,
+        userId ?? undefined,
         'AGENT',
         id,
         {
@@ -638,7 +638,7 @@ export const adminController = {
       const userId = getUserId(req);
       await eventService.logAdminEvent(
         EventType.AGENT_ONLINE, // Using existing event type, metadata will clarify it's unblocking
-        userId,
+        userId ?? undefined,
         'AGENT',
         id,
         {
@@ -1216,7 +1216,7 @@ export const adminController = {
       const userId = getUserId(req);
       await eventService.logAdminEvent(
         EventType.ORDER_ASSIGNED,
-        userId,
+        userId ?? undefined,
         'ORDER',
         id,
         {
