@@ -143,28 +143,76 @@ export const ProfilePictureUpload: React.FC<ProfilePictureUploadProps> = ({
     // For external URLs, always use regular img tag to avoid Next.js Image optimization issues
     // This is especially important in production where CORS and proxy issues can occur
     const useRegularImg = isExternalUrl && !displayUrl?.startsWith('blob:');
+    
+    // Validate URL before attempting to load
+    const isValidUrl = displayUrl ? (
+        displayUrl.startsWith('http://') || 
+        displayUrl.startsWith('https://') || 
+        displayUrl.startsWith('blob:') ||
+        displayUrl.startsWith('/')
+    ) : false;
 
     return (
         <div className="flex flex-col items-center gap-4">
             <div className="relative group">
                 <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-white shadow-lg bg-slate-100 dark:bg-slate-800">
-                    {displayUrl ? (
+                    {displayUrl && isValidUrl && !imageError ? (
                         useRegularImg ? (
                             // Use regular img tag for external backend images (more reliable in production)
+                            // Note: crossOrigin is removed as backend already sets CORS headers properly
                             <img
                                 src={displayUrl}
                                 alt="Profile"
                                 width={128}
                                 height={128}
                                 className="w-full h-full object-cover"
-                                crossOrigin="anonymous"
                                 onError={(e) => {
-                                    console.error('[ProfilePictureUpload] Image load error:', {
-                                        src: displayUrl,
-                                        error: e,
-                                        url: displayUrl,
-                                    });
-                                    setImageError(true);
+                                    try {
+                                        const target = e?.target as HTMLImageElement | null;
+                                        const currentDisplayUrl = displayUrl || 'unknown';
+                                        
+                                        const errorInfo: Record<string, any> = {
+                                            src: currentDisplayUrl,
+                                            attemptedUrl: target?.src || currentDisplayUrl,
+                                            errorType: 'load_failed',
+                                            timestamp: new Date().toISOString(),
+                                        };
+                                        
+                                        // Safely access image properties
+                                        if (target) {
+                                            errorInfo.naturalWidth = target.naturalWidth ?? 0;
+                                            errorInfo.naturalHeight = target.naturalHeight ?? 0;
+                                            errorInfo.complete = target.complete ?? false;
+                                            errorInfo.currentSrc = target.currentSrc || 'unknown';
+                                        }
+                                        
+                                        // Log the error event itself for debugging
+                                        if (e && typeof e === 'object') {
+                                            errorInfo.eventType = (e as any).type || 'unknown';
+                                            errorInfo.eventBubbles = (e as any).bubbles ?? false;
+                                        }
+                                        
+                                        // Ensure we always log something useful
+                                        // Log the raw object first
+                                        console.log('[ProfilePictureUpload] Error info object:', errorInfo);
+                                        console.error('[ProfilePictureUpload] Image load error:', JSON.stringify(errorInfo, null, 2));
+                                        console.error('[ProfilePictureUpload] Failed to load image from:', currentDisplayUrl);
+                                        
+                                        // Also log individual properties to ensure they're accessible
+                                        console.error('[ProfilePictureUpload] Error details:', {
+                                            'Image URL': currentDisplayUrl,
+                                            'Attempted URL': target?.src || currentDisplayUrl,
+                                            'Image exists': !!target,
+                                            'Natural dimensions': target ? `${target.naturalWidth}x${target.naturalHeight}` : 'N/A',
+                                        });
+                                        
+                                        setImageError(true);
+                                    } catch (errorHandlerError) {
+                                        // Fallback if error handler itself fails
+                                        console.error('[ProfilePictureUpload] Error in error handler:', errorHandlerError);
+                                        console.error('[ProfilePictureUpload] Original image URL:', displayUrl || 'undefined');
+                                        setImageError(true);
+                                    }
                                 }}
                                 onLoad={() => {
                                     // Reset error state on successful load
@@ -181,11 +229,31 @@ export const ProfilePictureUpload: React.FC<ProfilePictureUploadProps> = ({
                                 className="w-full h-full object-cover"
                                 unoptimized={true}
                                 onError={(e) => {
-                                    console.error('[ProfilePictureUpload] Image load error:', {
-                                        src: displayUrl,
-                                        error: e,
-                                    });
-                                    setImageError(true);
+                                    try {
+                                        const currentDisplayUrl = displayUrl || 'unknown';
+                                        
+                                        const errorInfo: Record<string, any> = {
+                                            src: currentDisplayUrl,
+                                            attemptedUrl: currentDisplayUrl,
+                                            errorType: 'next_image_load_failed',
+                                            timestamp: new Date().toISOString(),
+                                        };
+                                        
+                                        // Log the error event if available
+                                        if (e && typeof e === 'object') {
+                                            errorInfo.eventType = (e as any).type || 'unknown';
+                                        }
+                                        
+                                        // Ensure we always log something useful
+                                        console.error('[ProfilePictureUpload] Next.js Image load error:', JSON.stringify(errorInfo, null, 2));
+                                        console.error('[ProfilePictureUpload] Failed to load image from:', currentDisplayUrl);
+                                        
+                                        setImageError(true);
+                                    } catch (errorHandlerError) {
+                                        console.error('[ProfilePictureUpload] Error in error handler:', errorHandlerError);
+                                        console.error('[ProfilePictureUpload] Original image URL:', displayUrl || 'undefined');
+                                        setImageError(true);
+                                    }
                                 }}
                                 onLoad={() => {
                                     setImageError(false);

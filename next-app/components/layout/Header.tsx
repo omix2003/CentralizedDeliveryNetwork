@@ -1,19 +1,31 @@
 'use client';
 
 import React from 'react';
-import { Search, Bell, User } from 'lucide-react';
+import { Search, Bell, User, Menu } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 
 interface HeaderProps {
   title?: string;
   showSearch?: boolean;
+  onMenuClick?: () => void;
 }
 
-export function Header({ title, showSearch = false }: HeaderProps) {
+export function Header({ title, showSearch = false, onMenuClick }: HeaderProps) {
   const { data: session } = useSession();
 
   return (
     <header className="h-16 bg-white border-b border-gray-100 flex items-center justify-between px-6 sticky top-0 z-40">
+      {/* Menu Toggle Button - Visible on all screen sizes */}
+      {onMenuClick && (
+        <button
+          onClick={onMenuClick}
+          className="p-2 rounded-lg hover:bg-gray-100 transition-colors mr-2"
+          aria-label="Toggle sidebar"
+        >
+          <Menu className="h-5 w-5 text-gray-600" />
+        </button>
+      )}
+      
       {showSearch ? (
         <div className="flex-1 max-w-2xl">
           <div className="relative">

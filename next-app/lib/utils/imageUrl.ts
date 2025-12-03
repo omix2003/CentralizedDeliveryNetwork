@@ -42,7 +42,27 @@ export function getImageUrl(imagePath: string | null | undefined): string | null
   // Ensure imagePath starts with /
   const normalizedPath = imagePath.startsWith('/') ? imagePath : `/${imagePath}`;
   
-  // Otherwise, prepend the backend base URL
+  // Check if this is a Next.js public file (files uploaded via Next.js API route)
+  // Next.js serves files from /public/ directory at the root URL
+  // Next.js upload pattern: userId-timestamp.ext (e.g., cmiivoqu200009xioac2r1ov6-1764335337265.webp)
+  // Backend upload pattern: profile-timestamp-random.ext (e.g., profile-1764335337265-123456789.webp)
+  const filename = normalizedPath.split('/').pop() || '';
+  // Backend files start with "profile-", Next.js files don't
+  const isBackendFile = filename.startsWith('profile-');
+  
+  if (!isBackendFile && filename) {
+    // This is a Next.js-uploaded file, serve it from Next.js
+    if (typeof window !== 'undefined') {
+      // Client-side: use relative URL (Next.js will serve from public/)
+      return normalizedPath;
+    } else {
+      // Server-side: construct full URL using Next.js base URL
+      const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:3000';
+      return `${baseUrl}${normalizedPath}`;
+    }
+  }
+  
+  // Otherwise, prepend the backend base URL (for backend-uploaded files)
   const backendUrl = getBackendBaseUrl();
   const fullUrl = `${backendUrl}${normalizedPath}`;
   
@@ -51,6 +71,8 @@ export function getImageUrl(imagePath: string | null | undefined): string | null
     imagePath,
     backendUrl,
     fullUrl,
+    isBackendFile,
+    filename,
     hasApiUrl: !!process.env.NEXT_PUBLIC_API_URL,
     apiUrl: process.env.NEXT_PUBLIC_API_URL,
     nodeEnv: process.env.NODE_ENV,
