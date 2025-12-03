@@ -49,7 +49,7 @@ export interface MapViewProps {
   /** Whether map is interactive */
   interactive?: boolean;
   /** Ref to access map methods */
-  mapRef?: React.RefObject<MapRef>;
+  mapRef?: React.RefObject<MapRef | null>;
 }
 
 const DEFAULT_MAP_STYLE = 'mapbox://styles/mapbox/streets-v12';
