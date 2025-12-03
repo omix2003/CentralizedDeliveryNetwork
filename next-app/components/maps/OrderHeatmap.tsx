@@ -3,7 +3,7 @@
 import React, { useMemo, useRef } from 'react';
 import { MapView } from './MapView';
 import { Source, Layer } from 'react-map-gl/mapbox';
-import type { MapLayerMouseEvent, MapRef } from 'react-map-gl';
+import type { MapMouseEvent, MapRef } from 'react-map-gl/mapbox';
 
 export interface HeatmapPoint {
   location: [number, number]; // [lng, lat]
@@ -92,7 +92,7 @@ export function OrderHeatmap({
     };
   }, [bounds, data]);
 
-  const handleMapClick = (event: MapLayerMouseEvent) => {
+  const handleMapClick = (event: MapMouseEvent) => {
     if (!onPointClick || !mapRef.current) return;
     
     const features = mapRef.current.queryRenderedFeatures(event.point, {
