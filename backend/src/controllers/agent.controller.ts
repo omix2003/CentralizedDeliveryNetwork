@@ -3,7 +3,7 @@ import { prisma } from '../lib/prisma';
 import { getAgentId, getUserId, isAdmin } from '../utils/role.util';
 import { redisGeo } from '../lib/redis';
 import { notifyPartner } from '../lib/webhook';
-import { EventType, ActorType } from '@prisma/client';
+import { EventType, ActorType, OrderStatus } from '@prisma/client';
 import { eventService } from '../services/event.service';
 import path from 'path';
 import fs from 'fs';
@@ -953,7 +953,7 @@ export const agentController = {
         where: {
           agentId,
           status: {
-            in: ['ASSIGNED', 'PICKED_UP', 'OUT_FOR_DELIVERY', 'DELAYED'],
+            in: ['ASSIGNED', 'PICKED_UP', 'OUT_FOR_DELIVERY', 'DELAYED'] as OrderStatus[],
           },
         },
       });
@@ -977,7 +977,7 @@ export const agentController = {
           },
         });
 
-        if (order && ['ASSIGNED', 'PICKED_UP', 'OUT_FOR_DELIVERY', 'DELAYED'].includes(order.status)) {
+        if (order && (order.status === 'ASSIGNED' || order.status === 'PICKED_UP' || order.status === 'OUT_FOR_DELIVERY' || order.status === 'DELAYED')) {
           // Check and update delayed status
           const { delayCheckerService } = await import('../services/delay-checker.service');
           await delayCheckerService.checkOrderDelay(order.id);
