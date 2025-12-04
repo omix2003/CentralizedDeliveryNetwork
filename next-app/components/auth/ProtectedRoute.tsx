@@ -38,10 +38,11 @@ export function ProtectedRoute({
       if (!roles.includes(userRole)) {
         // Redirect to appropriate dashboard based on role
         const roleDashboard = getRoleDashboard(userRole) || '/';
-        router.push(roleDashboard);
+        router.replace(roleDashboard);
       }
     }
-  }, [session, status, requiredRole, redirectTo, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, status, requiredRole, redirectTo]); // Removed router from deps as it's stable
 
   // Show loading state
   if (status === 'loading') {
@@ -90,6 +91,8 @@ function getRoleDashboard(role: UserRole): string | null {
       return null;
   }
 }
+
+
 
 
 

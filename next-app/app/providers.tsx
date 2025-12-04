@@ -1,15 +1,20 @@
 'use client';
 
-import { SessionProvider, useSession } from 'next-auth/react';
-import { ReactNode, useEffect } from 'react';
+import { SessionProvider } from 'next-auth/react';
+import { ReactNode, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { ToastProvider } from '@/lib/hooks/useToast';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 // Component to handle cross-tab session synchronization
 function SessionSync({ children }: { children: ReactNode }) {
-  const { data: session } = useSession();
   const router = useRouter();
+  const routerRef = useRef(router);
+
+  // Keep router ref in sync
+  useEffect(() => {
+    routerRef.current = router;
+  }, [router]);
 
   useEffect(() => {
     // Listen for NextAuth's cross-tab synchronization events
@@ -21,8 +26,7 @@ function SessionSync({ children }: { children: ReactNode }) {
           if (message?.event === 'session' && message?.data === 'signout') {
             // Session was signed out in another tab
             console.log('[Session] Sign out detected from another tab');
-            router.push('/login');
-            // Force reload to clear any cached state
+            routerRef.current.push('/login');
             window.location.href = '/login';
           }
         } catch (error) {
@@ -35,7 +39,7 @@ function SessionSync({ children }: { children: ReactNode }) {
     const handleMessage = (e: MessageEvent) => {
       if (e.data?.type === 'NEXT_AUTH_SIGN_OUT') {
         console.log('[Session] Sign out message received');
-        router.push('/login');
+        routerRef.current.push('/login');
         window.location.href = '/login';
       }
     };
@@ -47,7 +51,7 @@ function SessionSync({ children }: { children: ReactNode }) {
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('message', handleMessage);
     };
-  }, [router]);
+  }, []); // Empty deps - router is stable and accessed via ref
 
   return <>{children}</>;
 }
@@ -57,8 +61,9 @@ export function Providers({ children }: { children: ReactNode }) {
     <ErrorBoundary>
       <SessionProvider
         // Enable cross-tab session synchronization
-        refetchOnWindowFocus={true} // Refetch session when window gains focus
+        refetchOnWindowFocus={false} // Disabled to prevent re-renders on window focus
         refetchInterval={5 * 60} // Refetch every 5 minutes to check for session changes
+        refetchOnMount={true} // Only refetch on component mount
       >
         <SessionSync>
           <ToastProvider>

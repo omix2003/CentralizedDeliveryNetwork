@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { StatusBadge } from '@/components/ui/Badge';
@@ -11,6 +11,7 @@ import { useToast } from '@/lib/hooks/useToast';
 import { locationTracker, Location } from '@/lib/services/locationTracker';
 import { calculateDistance, formatDistance } from '@/lib/utils/distance';
 import { Package, RefreshCw, MapPin, DollarSign, Clock, AlertCircle, CheckCircle, Filter, MessageSquare } from 'lucide-react';
+import { formatCurrency } from '@/lib/utils/currency';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { AddressDisplay } from '@/components/orders/AddressDisplay';
@@ -65,6 +66,13 @@ export default function AgentOrdersPage() {
   }, [activeTab]);
 
   // Set up WebSocket listeners for real-time order offers
+  const showToastRef = useRef(showToast);
+  
+  // Keep showToast ref in sync (it's already memoized, but using ref for extra safety)
+  useEffect(() => {
+    showToastRef.current = showToast;
+  }, [showToast]);
+
   useEffect(() => {
     if (activeTab !== 'available' || !wsConnected) return;
 
@@ -77,13 +85,13 @@ export default function AgentOrdersPage() {
         }
         return [data.order, ...prev];
       });
-      showToast('info', `New order available: #${data.order.trackingNumber}`);
+      showToastRef.current('info', `New order available: #${data.order.trackingNumber}`);
     });
 
     return () => {
       unsubscribe();
     };
-  }, [activeTab, wsConnected, on, showToast]);
+  }, [activeTab, wsConnected, on]); // Removed showToast from deps, using ref instead
 
   useEffect(() => {
     if (activeTab === 'available') {
@@ -380,7 +388,7 @@ export default function AgentOrdersPage() {
                   </div>
                   {order.payout && (
                     <div className="text-right">
-                      <p className="text-lg font-bold text-green-600">${order.payout}</p>
+                      <p className="text-lg font-bold text-green-600">{formatCurrency(order.payout)}</p>
                     </div>
                   )}
                 </div>

@@ -21,6 +21,8 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { ProfilePictureUpload } from '@/components/user/ProfilePictureUpload';
+import { ratingApi, AgentRating } from '@/lib/api/rating';
+import { format } from 'date-fns';
 
 const DOCUMENT_TYPES = [
   { value: 'LICENSE', label: 'Driving License', required: true },
@@ -43,10 +45,20 @@ export default function AgentProfilePage() {
     pincode: '',
     vehicleType: 'BIKE' as 'BIKE' | 'SCOOTER' | 'CAR' | 'BICYCLE',
   });
+  const [ratings, setRatings] = useState<AgentRating[]>([]);
+  const [ratingsLoading, setRatingsLoading] = useState(false);
+  const [ratingsPage, setRatingsPage] = useState(1);
+  const [ratingsTotal, setRatingsTotal] = useState(0);
 
   useEffect(() => {
     loadProfile();
   }, []);
+
+  useEffect(() => {
+    if (profile?.id) {
+      loadRatings();
+    }
+  }, [profile?.id, ratingsPage]);
 
   const loadProfile = async () => {
     try {
@@ -149,6 +161,24 @@ export default function AgentProfilePage() {
     const doc = documents.find(d => d.documentType === docType);
     if (!doc) return { uploaded: false, verified: false };
     return { uploaded: true, verified: doc.verified };
+  };
+
+  const loadRatings = async () => {
+    if (!profile?.id) return;
+    
+    try {
+      setRatingsLoading(true);
+      const response = await ratingApi.getAgentRatings(profile.id, {
+        page: ratingsPage,
+        limit: 10,
+      });
+      setRatings(response.ratings);
+      setRatingsTotal(response.pagination.total);
+    } catch (err: any) {
+      console.error('Failed to load ratings:', err);
+    } finally {
+      setRatingsLoading(false);
+    }
   };
 
   const getKYCStatus = () => {
@@ -501,6 +531,98 @@ export default function AgentProfilePage() {
               );
             })}
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Ratings & Reviews */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Star className="h-5 w-5" />
+            Ratings & Reviews ({ratingsTotal})
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {ratingsLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+            </div>
+          ) : ratings.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              <Star className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+              <p>No ratings yet</p>
+              <p className="text-sm mt-1">Start delivering orders to receive ratings from partners</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {ratings.map((rating) => (
+                <div
+                  key={rating.id}
+                  className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors"
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="flex items-center gap-1">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <Star
+                              key={star}
+                              className={`h-4 w-4 ${
+                                star <= rating.rating
+                                  ? 'fill-yellow-400 text-yellow-400'
+                                  : 'text-gray-300'
+                              }`}
+                            />
+                          ))}
+                        </div>
+                        <span className="text-sm font-medium text-gray-900">
+                          {rating.rating}.0
+                        </span>
+                      </div>
+                      {rating.partner && (
+                        <p className="text-sm text-gray-600 mb-1">
+                          From {rating.partner.companyName || rating.partner.user?.name || 'Partner'}
+                        </p>
+                      )}
+                      {rating.comment && (
+                        <p className="text-sm text-gray-700 mt-2">{rating.comment}</p>
+                      )}
+                    </div>
+                    <span className="text-xs text-gray-500 whitespace-nowrap ml-4">
+                      {format(new Date(rating.createdAt), 'MMM d, yyyy')}
+                    </span>
+                  </div>
+                </div>
+              ))}
+              
+              {/* Pagination */}
+              {ratingsTotal > 10 && (
+                <div className="flex items-center justify-between pt-4 border-t">
+                  <p className="text-sm text-gray-600">
+                    Showing {((ratingsPage - 1) * 10) + 1} - {Math.min(ratingsPage * 10, ratingsTotal)} of {ratingsTotal}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setRatingsPage(p => Math.max(1, p - 1))}
+                      disabled={ratingsPage === 1}
+                    >
+                      Previous
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setRatingsPage(p => p + 1)}
+                      disabled={ratingsPage * 10 >= ratingsTotal}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 

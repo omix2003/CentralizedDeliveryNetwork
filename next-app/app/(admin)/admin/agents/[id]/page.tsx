@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { ArrowLeft, CheckCircle, XCircle, Ban, UserCheck, UserX, Package, Star, FileText, Trash2 } from 'lucide-react';
 import { useRouter, useParams } from 'next/navigation';
 import { adminApi } from '@/lib/api/admin';
+import { formatCurrency } from '@/lib/utils/currency';
 import { format } from 'date-fns';
 import { getImageUrl } from '@/lib/utils/imageUrl';
 
@@ -236,7 +237,7 @@ export default function AgentDetailsPage() {
                           </p>
                         </div>
                         <div className="text-right">
-                          <p className="font-medium text-gray-900">${order.payoutAmount.toFixed(2)}</p>
+                          <p className="font-medium text-gray-900">{formatCurrency(order.payoutAmount)}</p>
                           <p className="text-sm text-gray-600">{order.status}</p>
                         </div>
                       </div>

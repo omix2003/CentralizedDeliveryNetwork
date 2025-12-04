@@ -358,11 +358,11 @@ async function offerOrderToAgents(
       priority: order.priority,
     });
 
-    // Send FCM push notification
-    await sendOrderOfferNotification(agentId, orderId, {
-      payoutAmount: order.payoutAmount,
-      distance,
-    });
+    // Send FCM push notification - DISABLED
+    // await sendOrderOfferNotification(agentId, orderId, {
+    //   payoutAmount: order.payoutAmount,
+    //   distance,
+    // });
   }
 
   console.log(`[Assignment] Order ${orderId} offered to ${agentIds.length} agents via WebSocket + FCM`);
@@ -490,8 +490,8 @@ async function assignOrderToAgent(
       assignedAt: result.assignedAt,
     });
 
-    // Send FCM notification to agent
-    await sendOrderAssignedNotification(agentId, orderId);
+    // Send FCM notification to agent - DISABLED
+    // await sendOrderAssignedNotification(agentId, orderId);
 
     // Log order assignment event (system-assigned)
     const { eventService } = await import('./event.service');

@@ -21,6 +21,7 @@ import {
   Download,
   MapPin
 } from 'lucide-react';
+import { formatCurrency } from '@/lib/utils/currency';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { OrderHeatmap } from '@/components/maps/OrderHeatmap';
 import { ClientOnlyMap } from '@/components/maps/ClientOnlyMap';
@@ -221,7 +222,7 @@ export default function PartnerAnalyticsPage() {
         />
         <MetricCard
           title="Total Payout"
-          value={`$${analytics.summary.totalPayout.toFixed(2)}`}
+          value={formatCurrency(analytics.summary.totalPayout)}
           icon={DollarSign}
           variant="primary"
         />

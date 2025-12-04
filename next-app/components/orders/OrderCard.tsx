@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { MapPin, Phone, Mail, Truck, ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AddressDisplay } from './AddressDisplay';
+import { formatCurrency } from '@/lib/utils/currency';
 
 interface OrderCardProps {
   orderId: string;
@@ -197,7 +198,7 @@ export function OrderCard({
             {deliveryDate && <span>{deliveryDate}</span>}
           </div>
           {payout && (
-            <span className="text-base font-bold text-green-600">${payout}</span>
+            <span className="text-base font-bold text-green-600">{formatCurrency(payout)}</span>
           )}
         </div>
 

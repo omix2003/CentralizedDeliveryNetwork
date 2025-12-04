@@ -8,6 +8,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { adminApi } from '@/lib/api/admin';
 import { format } from 'date-fns';
 import { reverseGeocode } from '@/lib/utils/geocoding';
+import { formatCurrency } from '@/lib/utils/currency';
 
 export default function OrderDetailsPage() {
   const router = useRouter();
@@ -143,7 +144,7 @@ export default function OrderDetailsPage() {
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-700">Payout Amount</p>
-                <p className="text-gray-900 text-xl font-bold">${order.payoutAmount.toFixed(2)}</p>
+                <p className="text-gray-900 text-xl font-bold">{formatCurrency(order.payoutAmount)}</p>
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-700">Priority</p>

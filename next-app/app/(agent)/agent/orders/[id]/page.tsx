@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { StatusBadge } from '@/components/ui/Badge';
 import { agentApi, AgentOrder } from '@/lib/api/agent';
+import { formatCurrency } from '@/lib/utils/currency';
 import { 
   ArrowLeft, 
   MapPin, 
@@ -385,7 +386,7 @@ export default function AgentOrderDetailsPage() {
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-600">Payout</span>
-                <span className="text-lg font-bold text-green-600">${order.payout}</span>
+                <span className="text-lg font-bold text-green-600">{formatCurrency(order.payout)}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-600">Priority</span>

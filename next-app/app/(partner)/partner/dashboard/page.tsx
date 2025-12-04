@@ -9,6 +9,7 @@ import { SkeletonCard } from '@/components/ui/Skeleton';
 import { Package, TrendingUp, Clock, CheckCircle, Download, Filter } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import { partnerApi } from '@/lib/api/partner';
+import { formatCurrency } from '@/lib/utils/currency';
 
 interface DashboardMetrics {
   todayOrders: number;
@@ -196,7 +197,7 @@ export default function PartnerDashboard() {
                     order.status === 'PICKED_UP' ? 50 :
                     order.status === 'OUT_FOR_DELIVERY' ? 75 : 100
                   }
-                  weight={`$${order.payout.toFixed(2)}`}
+                  weight={formatCurrency(order.payout)}
                   deliveryDate={new Date(order.createdAt).toLocaleDateString()}
                   onTrack={() => window.location.href = `/partner/tracking?order=${order.id}`}
                 />

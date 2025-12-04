@@ -1982,28 +1982,28 @@ export const adminController = {
         },
       });
 
-      // Notify agent if ticket status changed to IN_PROGRESS and ticket is order-related
-      const ticketData = ticket as any;
-      if (status === 'IN_PROGRESS' && ticketData.agentId && ticketData.orderId) {
-        try {
-          const { sendPushNotification } = await import('../services/fcm.service');
-          await sendPushNotification(
-            ticketData.agent.userId,
-            'Support Ticket Update',
-            `Admin has started working on your ticket for order ${ticketData.order.id.substring(0, 8)}`,
-            {
-              type: 'TICKET_UPDATE',
-              ticketId: ticketData.id,
-              orderId: ticketData.order.id,
-              status: 'IN_PROGRESS',
-            }
-          );
-          console.log(`[Admin] Sent notification to agent ${ticketData.agentId} about ticket ${ticketData.id}`);
-        } catch (notifError) {
-          console.error('[Admin] Failed to send notification to agent:', notifError);
-          // Don't fail the request if notification fails
-        }
-      }
+      // Notify agent if ticket status changed to IN_PROGRESS and ticket is order-related - DISABLED
+      // const ticketData = ticket as any;
+      // if (status === 'IN_PROGRESS' && ticketData.agentId && ticketData.orderId) {
+      //   try {
+      //     const { sendPushNotification } = await import('../services/fcm.service');
+      //     await sendPushNotification(
+      //       ticketData.agent.userId,
+      //       'Support Ticket Update',
+      //       `Admin has started working on your ticket for order ${ticketData.order.id.substring(0, 8)}`,
+      //       {
+      //         type: 'TICKET_UPDATE',
+      //         ticketId: ticketData.id,
+      //         orderId: ticketData.order.id,
+      //         status: 'IN_PROGRESS',
+      //       }
+      //     );
+      //     console.log(`[Admin] Sent notification to agent ${ticketData.agentId} about ticket ${ticketData.id}`);
+      //   } catch (notifError) {
+      //     console.error('[Admin] Failed to send notification to agent:', notifError);
+      //     // Don't fail the request if notification fails
+      //   }
+      // }
 
       res.json({
         id: ticket.id,
@@ -2058,29 +2058,29 @@ export const adminController = {
         },
       });
 
-      // Notify user (agent or partner) if ticket is order-related
-      const ticketData = ticket as any;
-      const userIdToNotify = ticketData.agentId ? ticketData.agent?.userId : ticketData.partnerId ? ticketData.partner?.userId : null;
-      if (userIdToNotify && ticketData.orderId && ticketData.order) {
-        try {
-          const { sendPushNotification } = await import('../services/fcm.service');
-          await sendPushNotification(
-            userIdToNotify,
-            'Support Ticket Resolved',
-            `Your support ticket for order ${ticketData.order.id.substring(0, 8)} has been resolved`,
-            {
-              type: 'TICKET_RESOLVED',
-              ticketId: ticketData.id,
-              orderId: ticketData.order.id,
-              status: 'RESOLVED',
-            }
-          );
-          console.log(`[Admin] Sent resolution notification to user ${userIdToNotify} about ticket ${ticketData.id}`);
-        } catch (notifError) {
-          console.error('[Admin] Failed to send resolution notification:', notifError);
-          // Don't fail the request if notification fails
-        }
-      }
+      // Notify user (agent or partner) if ticket is order-related - DISABLED
+      // const ticketData = ticket as any;
+      // const userIdToNotify = ticketData.agentId ? ticketData.agent?.userId : ticketData.partnerId ? ticketData.partner?.userId : null;
+      // if (userIdToNotify && ticketData.orderId && ticketData.order) {
+      //   try {
+      //     const { sendPushNotification } = await import('../services/fcm.service');
+      //     await sendPushNotification(
+      //       userIdToNotify,
+      //       'Support Ticket Resolved',
+      //       `Your support ticket for order ${ticketData.order.id.substring(0, 8)} has been resolved`,
+      //       {
+      //         type: 'TICKET_RESOLVED',
+      //         ticketId: ticketData.id,
+      //         orderId: ticketData.order.id,
+      //         status: 'RESOLVED',
+      //       }
+      //     );
+      //     console.log(`[Admin] Sent resolution notification to user ${userIdToNotify} about ticket ${ticketData.id}`);
+      //   } catch (notifError) {
+      //     console.error('[Admin] Failed to send resolution notification:', notifError);
+      //     // Don't fail the request if notification fails
+      //   }
+      // }
 
       res.json({
         id: ticket.id,

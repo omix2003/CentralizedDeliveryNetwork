@@ -15,13 +15,16 @@ const publicRoutes: string[]=['/login','/register', '/'];
 export default async function middleware(request: NextRequest)
 {
     const {pathname} = request.nextUrl;
-    const isPublicRoute = publicRoutes.some(route =>
-        pathname.startsWith('/api/auth')
-    );
+    
+    // Allow API auth routes and public routes
+    const isPublicRoute = pathname.startsWith('/api/auth') || 
+                         publicRoutes.some(route => pathname === route || pathname.startsWith(`${route}/`));
+    
     if(isPublicRoute)
     {
         return NextResponse.next();
     }
+    
     const session = await auth();
     const routeKey = Object.keys(protectedRoutes).find(key =>
         pathname.startsWith(key)
@@ -41,6 +44,13 @@ export default async function middleware(request: NextRequest)
             const redirectUrl= getRoleDashboard(userRole) || '/';
             return NextResponse.redirect(new URL(redirectUrl, request.url));
         }
+        
+        // Add no-cache headers for protected routes to prevent back-button access
+        const response = NextResponse.next();
+        response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, private, max-age=0');
+        response.headers.set('Pragma', 'no-cache');
+        response.headers.set('Expires', '0');
+        return response;
     }
 
     return NextResponse.next();

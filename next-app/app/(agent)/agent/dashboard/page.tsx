@@ -8,6 +8,7 @@ import { OrderCard } from '@/components/orders/OrderCard';
 import { AddressDisplay } from '@/components/orders/AddressDisplay';
 import { OnlineToggle } from '@/components/agent/OnlineToggle';
 import { Package, DollarSign, Clock, CheckCircle, AlertCircle } from 'lucide-react';
+import { formatCurrency } from '@/lib/utils/currency';
 import { useSession } from 'next-auth/react';
 import { agentApi, AvailableOrder, AgentMetrics } from '@/lib/api/agent';
 import { locationTracker, Location } from '@/lib/services/locationTracker';
@@ -260,7 +261,7 @@ export default function AgentDashboard() {
           />
           <MetricCard
             title="Monthly Earnings"
-            value={`$${metrics.monthlyEarnings.toLocaleString()}`}
+            value={formatCurrency(metrics.monthlyEarnings)}
             icon={DollarSign}
             trend={
               metrics.earningsChange !== 0

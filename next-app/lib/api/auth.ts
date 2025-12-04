@@ -34,6 +34,12 @@ const getApiClient = () => {
   return apiClient;
 };
 
+export interface ChangePasswordData {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
 export const authApi = {
   login: async (credentials: LoginCredentials): Promise<AuthResponse> => {
     try {
@@ -153,6 +159,24 @@ export const authApi = {
         throw new Error('Cannot connect to backend server. Please make sure it is running.');
       } else {
         throw new Error(error.message || 'An error occurred during profile picture upload');
+      }
+    }
+  },
+
+  changePassword: async (data: ChangePasswordData): Promise<{ message: string }> => {
+    try {
+      const client = getApiClient();
+      const response = await client.put<{ message: string }>('/auth/change-password', data);
+      return response.data;
+    } catch (error: any) {
+      console.error('Change password error:', error);
+      if (error.response) {
+        const message = error.response.data?.error || error.response.data?.message || 'Failed to change password';
+        throw new Error(message);
+      } else if (error.request) {
+        throw new Error('Cannot connect to backend server. Please make sure it is running.');
+      } else {
+        throw new Error(error.message || 'An error occurred while changing password');
       }
     }
   },

@@ -11,7 +11,10 @@ import agentRoutes from './routes/agent.routes';
 import partnerRoutes from './routes/partner.routes';
 import partnerApiRoutes from './routes/partner-api.routes';
 import adminRoutes from './routes/admin.routes';
+// NOTIFICATIONS DISABLED
+// import notificationRoutes from './routes/notification.routes';
 import publicRoutes from './routes/public.routes';
+import ratingRoutes from './routes/rating.routes';
 
 // Load environment variables
 dotenv.config();
@@ -182,6 +185,13 @@ try {
 
   app.use('/api/admin', adminRoutes);
   console.log('✅ Admin routes registered at /api/admin');
+
+  app.use('/api/ratings', ratingRoutes);
+  console.log('✅ Rating routes registered at /api/ratings');
+
+  // NOTIFICATIONS DISABLED
+  // app.use('/api/notifications', notificationRoutes);
+  // console.log('✅ Notification routes registered at /api/notifications');
 } catch (error) {
   console.error('❌ Error registering routes:', error);
   console.error('❌ Error stack:', error instanceof Error ? error.stack : 'No stack');

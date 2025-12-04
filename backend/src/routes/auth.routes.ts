@@ -2,8 +2,7 @@ import { Router } from 'express';
 import { authController } from '../controllers/auth.controller';
 import {validate} from '../middleware/validation.middleware';
 import { authenticate } from '../middleware/auth.middleware';
-import { loginSchema } from '../utils/validation.schemas';
-import { registerSchema } from '../utils/validation.schemas';
+import { loginSchema, registerSchema, changePasswordSchema } from '../utils/validation.schemas';
 import { uploadProfilePicture } from '../middleware/upload.middleware';
 
 const router = Router();
@@ -28,6 +27,7 @@ router.post('/profile-picture', authenticate, (req, res, next) => {
     next();
   });
 }, authController.uploadProfilePicture);
+router.put('/change-password', authenticate, validate(changePasswordSchema), authController.changePassword);
 
 // Debug: Log registered routes
 console.log('🔐 Auth routes registered:');
@@ -35,6 +35,7 @@ console.log('  POST /api/auth/login');
 console.log('  POST /api/auth/register');
 console.log('  GET /api/auth/me');
 console.log('  POST /api/auth/profile-picture');
+console.log('  PUT /api/auth/change-password');
 
 export default router;
 

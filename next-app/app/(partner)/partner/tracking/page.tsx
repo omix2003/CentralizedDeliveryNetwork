@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { StatusBadge } from '@/components/ui/Badge';
 import { partnerApi, Order } from '@/lib/api/partner';
 import { MapPin, RefreshCw, Package, AlertCircle, Filter } from 'lucide-react';
+import { formatCurrency } from '@/lib/utils/currency';
 import dynamic from 'next/dynamic';
 
 // Lazy load map component to avoid SSR issues
@@ -169,7 +170,7 @@ export default function PartnerTrackingPage() {
                           <StatusBadge status={order.status} />
                         </div>
                         <p className="text-sm font-bold text-green-600">
-                          ${order.payout.toFixed(2)}
+                          {formatCurrency(order.payout)}
                         </p>
                       </div>
                       <div className="space-y-1 text-sm text-gray-600">
@@ -235,7 +236,7 @@ export default function PartnerTrackingPage() {
                       <div>
                         <p className="text-xs font-medium text-gray-500 mb-1">Payout</p>
                         <p className="text-lg font-bold text-green-600">
-                          ${selectedOrder.payout.toFixed(2)}
+                          {formatCurrency(selectedOrder.payout)}
                         </p>
                       </div>
                       <div>
