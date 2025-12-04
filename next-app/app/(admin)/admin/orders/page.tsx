@@ -7,6 +7,7 @@ import { Search, Package, RefreshCw, XCircle, ExternalLink } from 'lucide-react'
 import { useRouter } from 'next/navigation';
 import { adminApi, Order } from '@/lib/api/admin';
 import { format } from 'date-fns';
+import { formatCurrency } from '@/lib/utils/currency';
 
 export default function OrdersManagementPage() {
   const router = useRouter();
@@ -176,7 +177,7 @@ export default function OrdersManagementPage() {
                           )}
                         </td>
                         <td className="py-3 px-4 font-medium">
-                          ${order.payoutAmount.toFixed(2)}
+                          {formatCurrency(order.payoutAmount)}
                         </td>
                         <td className="py-3 px-4">
                           <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>

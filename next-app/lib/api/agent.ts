@@ -157,6 +157,30 @@ export interface AgentMetrics {
   acceptanceRate: number;
   rating: number | null;
   thisMonthOrders: number;
+  activeOrder?: {
+    id: string;
+    trackingNumber: string;
+    status: string;
+    pickup: {
+      latitude: number;
+      longitude: number;
+    };
+    dropoff: {
+      latitude: number;
+      longitude: number;
+    };
+    payout: number;
+    priority: string;
+    estimatedDuration?: number;
+    pickedUpAt?: string;
+    assignedAt?: string;
+    timing?: OrderTiming;
+    partner: {
+      name: string;
+      companyName: string;
+      phone: string;
+    };
+  } | null;
 }
 
 export interface AvailableOrder {
@@ -181,6 +205,14 @@ export interface AvailableOrder {
   };
 }
 
+export interface OrderTiming {
+  elapsedMinutes: number | null;
+  remainingMinutes: number | null;
+  isDelayed: boolean;
+  elapsedTime: string | null;
+  remainingTime: string | null;
+}
+
 export interface AgentOrder {
   id: string;
   trackingNumber: string;
@@ -203,6 +235,7 @@ export interface AgentOrder {
   deliveredAt?: string;
   cancelledAt?: string;
   cancellationReason?: string;
+  timing?: OrderTiming;
   partner: {
     id: string;
     name: string;

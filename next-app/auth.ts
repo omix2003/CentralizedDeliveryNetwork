@@ -6,8 +6,9 @@ import { getImageUrl } from "@/lib/utils/imageUrl";
 type UserRole = 'AGENT' | 'PARTNER' | 'ADMIN';
 
 // Validate required environment variables
+// NextAuth v5 requires these to be set properly
 let NEXTAUTH_SECRET = process.env.NEXTAUTH_SECRET;
-const NEXTAUTH_URL = process.env.NEXTAUTH_URL;
+let NEXTAUTH_URL = process.env.NEXTAUTH_URL;
 
 // In development, provide a fallback secret if not set
 if (!NEXTAUTH_SECRET) {
@@ -15,6 +16,7 @@ if (!NEXTAUTH_SECRET) {
     console.warn('[AUTH CONFIG] NEXTAUTH_SECRET not found. Using temporary development secret.');
     console.warn('[AUTH CONFIG] Please set NEXTAUTH_SECRET in .env.local for production.');
     NEXTAUTH_SECRET = 'KMm0Dm6e19k/0pXEosD4+KaO8G3ZAKFd3THVCAyiEXQ=';
+    // Set it in process.env so NextAuth can read it
     process.env.NEXTAUTH_SECRET = NEXTAUTH_SECRET;
   } else {
     const error = `NEXTAUTH_SECRET is not set. 
@@ -35,16 +37,16 @@ To generate a secret key, run:
 }
 
 // Set default NEXTAUTH_URL for development if not set
-let authUrl = NEXTAUTH_URL;
-if (!authUrl) {
+if (!NEXTAUTH_URL) {
   if (process.env.NODE_ENV === 'production') {
     const error = 'NEXTAUTH_URL is required in production. Please add it to your environment variables.';
     console.error('[AUTH CONFIG]', error);
     throw new Error(error);
   }
   // In development, use localhost:3000 as default
-  authUrl = 'http://localhost:3000';
-  process.env.NEXTAUTH_URL = authUrl;
+  NEXTAUTH_URL = 'http://localhost:3000';
+  // Set it in process.env so NextAuth can read it
+  process.env.NEXTAUTH_URL = NEXTAUTH_URL;
 }
 
 // Log configuration (without exposing secret)
@@ -52,156 +54,179 @@ if (process.env.NODE_ENV === 'development') {
   console.log('[AUTH CONFIG] NextAuth configured:', {
     hasSecret: !!NEXTAUTH_SECRET,
     secretLength: NEXTAUTH_SECRET?.length || 0,
-    url: authUrl,
+    url: NEXTAUTH_URL,
     nodeEnv: process.env.NODE_ENV,
+    nextAuthSecretEnv: !!process.env.NEXTAUTH_SECRET,
+    nextAuthUrlEnv: !!process.env.NEXTAUTH_URL,
   });
 }
 
-export const { handlers, signIn, signOut, auth } = NextAuth({
-  secret: process.env.NEXTAUTH_SECRET || NEXTAUTH_SECRET,
-  trustHost: true, // Required for NextAuth v5 - allows dynamic host detection
-  session: {
-    strategy: "jwt",
-    maxAge: 30 * 24 * 60 * 60, // 30 days
-  },
-  pages: {
-    signIn: "/login",
-    error: "/login",
-  },
-  providers: [
-    Credentials({
-      name: "Credentials",
-      credentials: {
-        email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" },
-      },
-      async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
-          console.error('[AUTH] Missing credentials');
-          throw new Error('Email and password are required');
-        }
+// Ensure we have a valid secret before initializing NextAuth
+if (!NEXTAUTH_SECRET) {
+  throw new Error('NEXTAUTH_SECRET must be set. Please check your .env.local file.');
+}
 
-        try {
-          console.log('[AUTH] Attempting login for:', credentials.email);
+// Initialize NextAuth with proper error handling
+let nextAuthInstance: ReturnType<typeof NextAuth>;
 
-          const response = await authApi.login({
-            email: credentials.email as string,
-            password: credentials.password as string,
-          });
-
-          console.log('[AUTH] Login response received:', {
-            hasUser: !!response?.user,
-            hasToken: !!response?.token,
-            userId: response?.user?.id
-          });
-
-          // Validate response structure
-          if (!response || !response.user || !response.token) {
-            console.error('[AUTH] Invalid response structure:', response);
-            throw new Error('Invalid response from server. Please try again.');
-          }
-
-          // Validate required user fields
-          if (!response.user.id || !response.user.email || !response.user.name || !response.user.role) {
-            console.error('[AUTH] Missing required user fields:', response.user);
-            throw new Error('Invalid user data received from server. Please try again.');
-          }
-
-          console.log('[AUTH] Login successful for user:', response.user.email);
-
-          return {
-            id: response.user.id,
-            email: response.user.email,
-            name: response.user.name,
-            role: response.user.role,
-            agentId: response.user.agentId,
-            partnerId: response.user.partnerId,
-            accessToken: response.token, // Store backend JWT token
-          };
-        } catch (error: any) {
-          console.error('[AUTH] Login error:', error);
-
-          // Extract error message for logging
-          let errorMessage = 'Invalid email or password';
-
-          if (error?.message) {
-            errorMessage = error.message;
-            console.error('[AUTH] Error message:', errorMessage);
-          }
-
-          if (error?.response) {
-            const backendError = error.response.data?.error || error.response.data?.message;
-            if (backendError) {
-              errorMessage = backendError;
-            }
-            console.error('[AUTH] Backend response:', {
-              status: error.response.status,
-              data: error.response.data
-            });
-          } else if (error?.request) {
-            errorMessage = 'Cannot connect to backend server. Please make sure it is running on port 5000.';
-            console.error('[AUTH] No response from backend. Is the backend server running?');
-            console.error('[AUTH] Request URL:', error.config?.url);
-            console.error('[AUTH] Base URL:', error.config?.baseURL);
-          } else {
-            console.error('[AUTH] Error setting up request:', error.message);
-          }
-
-          console.error('[AUTH] Final error message:', errorMessage);
-
-          // Throw error with message (NextAuth v5 will pass this to the client)
-          throw new Error(errorMessage);
-        }
-      },
-    }),
-  ],
-  callbacks: {
-    async jwt({ token, user }) {
-      if (user) {
-        token.id = user.id;
-        token.role = user.role;
-        token.agentId = (user as any).agentId;
-        token.partnerId = (user as any).partnerId;
-        token.accessToken = (user as any).accessToken; // Store backend JWT
-      }
-      return token;
+try {
+  nextAuthInstance = NextAuth({
+    secret: NEXTAUTH_SECRET, // Use the validated secret directly
+    trustHost: true, // Required for NextAuth v5 - allows dynamic host detection
+    session: {
+      strategy: "jwt" as const,
+      maxAge: 30 * 24 * 60 * 60, // 30 days
     },
-    async session({ session, token }) {
-      try {
-        if (session.user && token) {
-          session.user.id = token.id as string;
-          session.user.role = token.role as UserRole;
-          session.user.agentId = (token.agentId as string) || undefined;
-          session.user.partnerId = (token.partnerId as string) || undefined;
-          session.accessToken = token.accessToken as string; // Add accessToken to session
+    pages: {
+      signIn: "/login",
+      error: "/login",
+    },
+    providers: [
+      Credentials({
+        name: "Credentials",
+        credentials: {
+          email: { label: "Email", type: "email" },
+          password: { label: "Password", type: "password" },
+        },
+        async authorize(credentials) {
+          if (!credentials?.email || !credentials?.password) {
+            console.error('[AUTH] Missing credentials');
+            throw new Error('Email and password are required');
+          }
 
-          // Fetch latest profile picture from DB and convert to full URL
           try {
-            // We need to dynamically import prisma to avoid circular dependencies if any
-            const { prisma } = await import('@/lib/prisma');
-            const dbUser = await prisma.user.findUnique({
-              where: { id: token.id as string },
-              select: { profilePicture: true }
+            console.log('[AUTH] Attempting login for:', credentials.email);
+
+            const response = await authApi.login({
+              email: credentials.email as string,
+              password: credentials.password as string,
             });
-            // Convert relative path to full URL
-            if (dbUser?.profilePicture) {
-              session.user.image = getImageUrl(dbUser.profilePicture);
+
+            console.log('[AUTH] Login response received:', {
+              hasUser: !!response?.user,
+              hasToken: !!response?.token,
+              userId: response?.user?.id
+            });
+
+            // Validate response structure
+            if (!response || !response.user || !response.token) {
+              console.error('[AUTH] Invalid response structure:', response);
+              throw new Error('Invalid response from server. Please try again.');
+            }
+
+            // Validate required user fields
+            if (!response.user.id || !response.user.email || !response.user.name || !response.user.role) {
+              console.error('[AUTH] Missing required user fields:', response.user);
+              throw new Error('Invalid user data received from server. Please try again.');
+            }
+
+            console.log('[AUTH] Login successful for user:', response.user.email);
+
+            return {
+              id: response.user.id,
+              email: response.user.email,
+              name: response.user.name,
+              role: response.user.role,
+              agentId: response.user.agentId,
+              partnerId: response.user.partnerId,
+              accessToken: response.token, // Store backend JWT token
+            };
+          } catch (error: any) {
+            console.error('[AUTH] Login error:', error);
+
+            // Extract error message for logging
+            let errorMessage = 'Invalid email or password';
+
+            if (error?.message) {
+              errorMessage = error.message;
+              console.error('[AUTH] Error message:', errorMessage);
+            }
+
+            if (error?.response) {
+              const backendError = error.response.data?.error || error.response.data?.message;
+              if (backendError) {
+                errorMessage = backendError;
+              }
+              console.error('[AUTH] Backend response:', {
+                status: error.response.status,
+                data: error.response.data
+              });
+            } else if (error?.request) {
+              errorMessage = 'Cannot connect to backend server. Please make sure it is running on port 5000.';
+              console.error('[AUTH] No response from backend. Is the backend server running?');
+              console.error('[AUTH] Request URL:', error.config?.url);
+              console.error('[AUTH] Base URL:', error.config?.baseURL);
             } else {
+              console.error('[AUTH] Error setting up request:', error.message);
+            }
+
+            console.error('[AUTH] Final error message:', errorMessage);
+
+            // Throw error with message (NextAuth v5 will pass this to the client)
+            throw new Error(errorMessage);
+          }
+        },
+      }),
+    ],
+    callbacks: {
+      async jwt({ token, user }) {
+        if (user) {
+          token.id = user.id;
+          token.role = user.role;
+          token.agentId = (user as any).agentId;
+          token.partnerId = (user as any).partnerId;
+          token.accessToken = (user as any).accessToken; // Store backend JWT
+        }
+        return token;
+      },
+      async session({ session, token }) {
+        try {
+          if (session.user && token) {
+            session.user.id = token.id as string;
+            session.user.role = token.role as UserRole;
+            session.user.agentId = (token.agentId as string) || undefined;
+            session.user.partnerId = (token.partnerId as string) || undefined;
+            session.accessToken = token.accessToken as string; // Add accessToken to session
+
+            // Fetch latest profile picture from DB and convert to full URL
+            try {
+              // We need to dynamically import prisma to avoid circular dependencies if any
+              const { prisma } = await import('@/lib/prisma');
+              const dbUser = await prisma.user.findUnique({
+                where: { id: token.id as string },
+                select: { profilePicture: true }
+              });
+              // Convert relative path to full URL
+              if (dbUser?.profilePicture) {
+                session.user.image = getImageUrl(dbUser.profilePicture);
+              } else {
+                session.user.image = null;
+              }
+            } catch (e) {
+              console.error('Failed to fetch profile picture', e);
               session.user.image = null;
             }
-          } catch (e) {
-            console.error('Failed to fetch profile picture', e);
-            session.user.image = null;
           }
+          return session;
+        } catch (error: any) {
+          // Handle JWT decryption errors (e.g., when NEXTAUTH_SECRET changes)
+          console.error('[AUTH] Session callback error:', error?.message || error);
+          // Return empty session - user will need to login again
+          return session;
         }
-        return session;
-      } catch (error: any) {
-        // Handle JWT decryption errors (e.g., when NEXTAUTH_SECRET changes)
-        console.error('[AUTH] Session callback error:', error?.message || error);
-        // Return empty session - user will need to login again
-        return session;
-      }
+      },
     },
-  },
-  debug: process.env.NODE_ENV === 'development',
-});
+    debug: process.env.NODE_ENV === 'development',
+  });
+} catch (error: any) {
+  console.error('[AUTH CONFIG] Failed to initialize NextAuth:', error?.message || error);
+  console.error('[AUTH CONFIG] NEXTAUTH_SECRET:', process.env.NEXTAUTH_SECRET ? 'SET' : 'NOT SET');
+  console.error('[AUTH CONFIG] NEXTAUTH_URL:', process.env.NEXTAUTH_URL || 'NOT SET');
+  console.error('[AUTH CONFIG] Make sure NEXTAUTH_SECRET and NEXTAUTH_URL are set in .env.local');
+  
+  // Re-throw the error to prevent the app from starting with broken auth
+  throw new Error(`NextAuth initialization failed: ${error?.message || 'Unknown error'}`);
+}
+
+// Export NextAuth functions at module level (cannot be inside try-catch)
+export const { handlers, signIn, signOut, auth } = nextAuthInstance;

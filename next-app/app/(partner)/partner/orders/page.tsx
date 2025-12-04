@@ -7,6 +7,7 @@ import { StatusBadge } from '@/components/ui/Badge';
 import { partnerApi, Order } from '@/lib/api/partner';
 import { AddressDisplay } from '@/components/orders/AddressDisplay';
 import { Package, Plus, RefreshCw, Filter, Search, MapPin, DollarSign, Clock, AlertCircle } from 'lucide-react';
+import { formatCurrency } from '@/lib/utils/currency';
 import { useRouter } from 'next/navigation';
 
 export default function PartnerOrdersPage() {
@@ -166,7 +167,7 @@ export default function PartnerOrdersPage() {
                   </div>
                   <div className="text-right ml-4 flex flex-col items-end gap-2">
                     <p className="text-2xl font-bold text-green-600">
-                      ${order.payout.toFixed(2)}
+                      {formatCurrency(order.payout)}
                     </p>
                     {order.priority && (
                       <span className={`text-xs px-2 py-1 rounded ${

@@ -14,6 +14,15 @@ export const registerSchema =z.object({
     role: z.enum(['AGENT', 'PARTNER', 'ADMIN']),
 });
 
+export const changePasswordSchema = z.object({
+    currentPassword: z.string().min(1, 'Current password is required'),
+    newPassword: z.string().min(8, 'New password must be at least 8 characters long'),
+    confirmPassword: z.string().min(1, 'Please confirm your new password'),
+}).refine((data) => data.newPassword === data.confirmPassword, {
+    message: "New password and confirm password don't match",
+    path: ["confirmPassword"],
+});
+
 export const updateLocationSchema =z.object({
     latitude:z.number().min(-90).max(90, 'Latitude must be between -90 and 90'),
     longitude:z.number().min(-180).max(180, 'Longitude must be between -180 and 180'),
@@ -50,6 +59,7 @@ export const updateOrderStatusSchema =z.object({
         'OUT_FOR_DELIVERY',
         'DELIVERED',
         'CANCELLED',
+        'DELAYED',
     ]),
     cancellationReason: z.string().optional(),
 });

@@ -189,6 +189,31 @@ export const authController = {
     }
   },
 
+  // PUT /api/auth/change-password - Change password
+  async changePassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const { currentPassword, newPassword } = req.body;
+
+      await authService.changePassword(req.user.id, currentPassword, newPassword);
+
+      res.json({
+        message: 'Password changed successfully',
+      });
+    } catch (error: any) {
+      if (error.message === 'Current password is incorrect') {
+        return res.status(400).json({ error: error.message });
+      }
+      if (error.message === 'User not found') {
+        return res.status(404).json({ error: error.message });
+      }
+      next(error);
+    }
+  },
+
 };
 
 

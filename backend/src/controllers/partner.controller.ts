@@ -332,35 +332,52 @@ export const partnerController = {
         prisma.order.count({ where }),
       ]);
 
+      // Calculate timing information for each order
+      const { delayCheckerService } = await import('../services/delay-checker.service');
+      
       res.json({
-        orders: orders.map(order => ({
-          id: order.id,
-          trackingNumber: order.id.substring(0, 8).toUpperCase(),
-          status: order.status,
-          pickup: {
-            latitude: order.pickupLat,
-            longitude: order.pickupLng,
-          },
-          dropoff: {
-            latitude: order.dropLat,
-            longitude: order.dropLng,
-          },
-          payout: order.payoutAmount,
-          priority: order.priority,
-          estimatedDuration: order.estimatedDuration,
-          assignedAt: order.assignedAt?.toISOString(),
-          pickedUpAt: order.pickedUpAt?.toISOString(),
-          deliveredAt: order.deliveredAt?.toISOString(),
-          cancelledAt: order.cancelledAt?.toISOString(),
-          cancellationReason: order.cancellationReason,
-          createdAt: order.createdAt.toISOString(),
-          agent: order.agent ? {
-            id: order.agent.id,
-            name: order.agent.user.name,
-            phone: order.agent.user.phone,
-            vehicleType: order.agent.vehicleType,
-          } : null,
-        })),
+        orders: orders.map(order => {
+          const timing = delayCheckerService.getOrderTiming({
+            pickedUpAt: order.pickedUpAt,
+            estimatedDuration: order.estimatedDuration,
+          });
+          
+          return {
+            id: order.id,
+            trackingNumber: order.id.substring(0, 8).toUpperCase(),
+            status: order.status,
+            pickup: {
+              latitude: order.pickupLat,
+              longitude: order.pickupLng,
+            },
+            dropoff: {
+              latitude: order.dropLat,
+              longitude: order.dropLng,
+            },
+            payout: order.payoutAmount,
+            priority: order.priority,
+            estimatedDuration: order.estimatedDuration,
+            assignedAt: order.assignedAt?.toISOString(),
+            pickedUpAt: order.pickedUpAt?.toISOString(),
+            deliveredAt: order.deliveredAt?.toISOString(),
+            cancelledAt: order.cancelledAt?.toISOString(),
+            cancellationReason: order.cancellationReason,
+            createdAt: order.createdAt.toISOString(),
+            timing: {
+              elapsedMinutes: timing.elapsedMinutes,
+              remainingMinutes: timing.remainingMinutes,
+              isDelayed: timing.isDelayed,
+              elapsedTime: timing.elapsedTime,
+              remainingTime: timing.remainingTime,
+            },
+            agent: order.agent ? {
+              id: order.agent.id,
+              name: order.agent.user.name,
+              phone: order.agent.user.phone,
+              vehicleType: order.agent.vehicleType,
+            } : null,
+          };
+        }),
         total,
         limit: Number(limit),
         offset: Number(offset),
@@ -414,6 +431,21 @@ export const partnerController = {
         return res.status(404).json({ error: 'Order not found' });
       }
 
+      // Check and update delayed status
+      const { delayCheckerService } = await import('../services/delay-checker.service');
+      await delayCheckerService.checkOrderDelay(orderId);
+      
+      // Refresh order to get updated status
+      const refreshedOrder = await prisma.order.findUnique({
+        where: { id: orderId },
+      });
+      
+      // Calculate timing information
+      const timing = delayCheckerService.getOrderTiming({
+        pickedUpAt: refreshedOrder?.pickedUpAt || order.pickedUpAt,
+        estimatedDuration: refreshedOrder?.estimatedDuration || order.estimatedDuration,
+      });
+
       res.json({
         id: order.id,
         trackingNumber: order.id.substring(0, 8).toUpperCase(),
@@ -437,6 +469,13 @@ export const partnerController = {
         cancellationReason: order.cancellationReason,
         createdAt: order.createdAt.toISOString(),
         updatedAt: order.updatedAt.toISOString(),
+        timing: {
+          elapsedMinutes: timing.elapsedMinutes,
+          remainingMinutes: timing.remainingMinutes,
+          isDelayed: timing.isDelayed,
+          elapsedTime: timing.elapsedTime,
+          remainingTime: timing.remainingTime,
+        },
         agent: order.agent ? {
           id: order.agent.id,
           name: order.agent.user.name,

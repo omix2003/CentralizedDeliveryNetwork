@@ -3,7 +3,7 @@ import { prisma } from '../lib/prisma';
 import { getAgentId, getUserId, isAdmin } from '../utils/role.util';
 import { redisGeo } from '../lib/redis';
 import { notifyPartner } from '../lib/webhook';
-import { EventType, ActorType } from '@prisma/client';
+import { EventType, ActorType, OrderStatus } from '@prisma/client';
 import { eventService } from '../services/event.service';
 import path from 'path';
 import fs from 'fs';
@@ -548,37 +548,54 @@ export const agentController = {
         },
       });
 
+      // Calculate timing information for each order
+      const { delayCheckerService } = await import('../services/delay-checker.service');
+      
       // Format orders for response
-      const formattedOrders = orders.map(order => ({
-        id: order.id,
-        trackingNumber: order.id.substring(0, 8).toUpperCase(),
-        status: order.status,
-        pickup: {
-          latitude: order.pickupLat,
-          longitude: order.pickupLng,
-        },
-        dropoff: {
-          latitude: order.dropLat,
-          longitude: order.dropLng,
-        },
-        payout: order.payoutAmount,
-        priority: order.priority || 'NORMAL',
-        estimatedDuration: order.estimatedDuration,
-        actualDuration: order.actualDuration,
-        createdAt: order.createdAt.toISOString(),
-        assignedAt: order.assignedAt?.toISOString(),
-        pickedUpAt: order.pickedUpAt?.toISOString(),
-        deliveredAt: order.deliveredAt?.toISOString(),
-        cancelledAt: order.cancelledAt?.toISOString(),
-        cancellationReason: order.cancellationReason,
-        partner: {
-          id: order.partner.id,
-          name: order.partner.user.name,
-          companyName: order.partner.companyName,
-          phone: order.partner.user.phone,
-          email: order.partner.user.email,
-        },
-      }));
+      const formattedOrders = orders.map(order => {
+        const timing = delayCheckerService.getOrderTiming({
+          pickedUpAt: order.pickedUpAt,
+          estimatedDuration: order.estimatedDuration,
+        });
+        
+        return {
+          id: order.id,
+          trackingNumber: order.id.substring(0, 8).toUpperCase(),
+          status: order.status,
+          pickup: {
+            latitude: order.pickupLat,
+            longitude: order.pickupLng,
+          },
+          dropoff: {
+            latitude: order.dropLat,
+            longitude: order.dropLng,
+          },
+          payout: order.payoutAmount,
+          priority: order.priority || 'NORMAL',
+          estimatedDuration: order.estimatedDuration,
+          actualDuration: order.actualDuration,
+          createdAt: order.createdAt.toISOString(),
+          assignedAt: order.assignedAt?.toISOString(),
+          pickedUpAt: order.pickedUpAt?.toISOString(),
+          deliveredAt: order.deliveredAt?.toISOString(),
+          cancelledAt: order.cancelledAt?.toISOString(),
+          cancellationReason: order.cancellationReason,
+          timing: {
+            elapsedMinutes: timing.elapsedMinutes,
+            remainingMinutes: timing.remainingMinutes,
+            isDelayed: timing.isDelayed,
+            elapsedTime: timing.elapsedTime,
+            remainingTime: timing.remainingTime,
+          },
+          partner: {
+            id: order.partner.id,
+            name: order.partner.user.name,
+            companyName: order.partner.companyName,
+            phone: order.partner.user.phone,
+            email: order.partner.user.email,
+          },
+        };
+      });
 
       res.json(formattedOrders);
     } catch (error) {
@@ -622,11 +639,26 @@ export const agentController = {
         return res.status(403).json({ error: 'You do not have permission to view this order' });
       }
 
+      // Check and update delayed status
+      const { delayCheckerService } = await import('../services/delay-checker.service');
+      await delayCheckerService.checkOrderDelay(orderId);
+      
+      // Refresh order to get updated status
+      const refreshedOrder = await prisma.order.findUnique({
+        where: { id: orderId },
+      });
+      
+      // Calculate timing information
+      const timing = delayCheckerService.getOrderTiming({
+        pickedUpAt: refreshedOrder?.pickedUpAt || order.pickedUpAt,
+        estimatedDuration: refreshedOrder?.estimatedDuration || order.estimatedDuration,
+      });
+
       // Format order for response
       const formattedOrder = {
         id: order.id,
         trackingNumber: order.id.substring(0, 8).toUpperCase(),
-        status: order.status,
+        status: refreshedOrder?.status || order.status,
         pickup: {
           latitude: order.pickupLat,
           longitude: order.pickupLng,
@@ -645,6 +677,13 @@ export const agentController = {
         deliveredAt: order.deliveredAt?.toISOString(),
         cancelledAt: order.cancelledAt?.toISOString(),
         cancellationReason: order.cancellationReason,
+        timing: {
+          elapsedMinutes: timing.elapsedMinutes,
+          remainingMinutes: timing.remainingMinutes,
+          isDelayed: timing.isDelayed,
+          elapsedTime: timing.elapsedTime,
+          remainingTime: timing.remainingTime,
+        },
         partner: {
           id: order.partner.id,
           name: order.partner.user.name,
@@ -728,6 +767,20 @@ export const agentController = {
       const updatedOrder = await prisma.order.update({
         where: { id: orderId },
         data: updateData,
+      });
+
+      // Check for delay after status update (if order was picked up or is out for delivery)
+      if ((status === 'PICKED_UP' || status === 'OUT_FOR_DELIVERY') && updatedOrder.pickedUpAt) {
+        const { delayCheckerService } = await import('../services/delay-checker.service');
+        // Run delay check asynchronously (don't wait)
+        delayCheckerService.checkOrderDelay(orderId).catch(err => 
+          console.error('[Agent Controller] Error checking delay status:', err)
+        );
+      }
+
+      // Fetch updated order with includes for response
+      const orderWithIncludes = await prisma.order.findUnique({
+        where: { id: orderId },
         include: {
           partner: {
             select: {
@@ -737,9 +790,13 @@ export const agentController = {
         },
       });
 
+      if (!orderWithIncludes) {
+        return res.status(404).json({ error: 'Order not found after update' });
+      }
+
       // Notify partner via webhook
       await notifyPartner(
-        updatedOrder.partner.id,
+        orderWithIncludes.partner.id,
         `ORDER_${status}`,
         updatedOrder.id,
         updatedOrder.status,
@@ -896,10 +953,108 @@ export const agentController = {
         where: {
           agentId,
           status: {
-            in: ['ASSIGNED', 'PICKED_UP', 'OUT_FOR_DELIVERY'],
+            in: [OrderStatus.ASSIGNED, OrderStatus.PICKED_UP, OrderStatus.OUT_FOR_DELIVERY, 'DELAYED' as OrderStatus],
           },
         },
       });
+
+      // Get active order details if exists
+      // Check both currentOrderId and any active order assigned to this agent
+      let activeOrder = null;
+      
+      // First try currentOrderId
+      let orderToCheck = agent.currentOrderId;
+      
+      // If no currentOrderId, check for any active order assigned to this agent
+      if (!orderToCheck) {
+        const activeOrderRecord = await prisma.order.findFirst({
+          where: {
+            agentId,
+            status: {
+              in: [OrderStatus.ASSIGNED, OrderStatus.PICKED_UP, OrderStatus.OUT_FOR_DELIVERY, 'DELAYED' as OrderStatus],
+            },
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+          select: {
+            id: true,
+          },
+        });
+        orderToCheck = activeOrderRecord?.id || null;
+      }
+      
+      if (orderToCheck) {
+        try {
+          const order = await prisma.order.findUnique({
+            where: { id: orderToCheck },
+            include: {
+              partner: {
+                include: {
+                  user: {
+                    select: {
+                      name: true,
+                      phone: true,
+                    },
+                  },
+                },
+              },
+            },
+          });
+
+        const activeStatuses: OrderStatus[] = [
+          OrderStatus.ASSIGNED, 
+          OrderStatus.PICKED_UP, 
+          OrderStatus.OUT_FOR_DELIVERY, 
+          'DELAYED' as OrderStatus
+        ];
+        if (order && activeStatuses.includes(order.status) && order.partner && order.partner.user) {
+            // Check and update delayed status
+            const { delayCheckerService } = await import('../services/delay-checker.service');
+            await delayCheckerService.checkOrderDelay(order.id);
+            
+            // Refresh order to get updated status
+            const refreshedOrder = await prisma.order.findUnique({
+              where: { id: order.id },
+            });
+
+            // Calculate timing information
+            const timing = delayCheckerService.getOrderTiming({
+              pickedUpAt: refreshedOrder?.pickedUpAt || order.pickedUpAt,
+              estimatedDuration: refreshedOrder?.estimatedDuration || order.estimatedDuration,
+            });
+
+            activeOrder = {
+              id: order.id,
+              trackingNumber: order.id.substring(0, 8).toUpperCase(),
+              status: refreshedOrder?.status || order.status,
+              pickup: {
+                latitude: order.pickupLat,
+                longitude: order.pickupLng,
+              },
+              dropoff: {
+                latitude: order.dropLat,
+                longitude: order.dropLng,
+              },
+              payout: order.payoutAmount,
+              priority: order.priority || 'NORMAL',
+              estimatedDuration: refreshedOrder?.estimatedDuration || order.estimatedDuration,
+              pickedUpAt: order.pickedUpAt?.toISOString(),
+              assignedAt: order.assignedAt?.toISOString(),
+              timing,
+              partner: {
+                name: order.partner.user.name,
+                companyName: order.partner.companyName || '',
+                phone: order.partner.user.phone || '',
+              },
+            };
+          }
+        } catch (error: any) {
+          console.error('[Agent Metrics] Error fetching active order:', error);
+          // Continue without active order if there's an error
+          activeOrder = null;
+        }
+      }
 
       res.json({
         todayOrders,
@@ -915,6 +1070,7 @@ export const agentController = {
         acceptanceRate: agent.acceptanceRate,
         rating: agent.rating,
         thisMonthOrders: thisMonthOrders.length,
+        activeOrder,
       });
     } catch (error) {
       next(error);

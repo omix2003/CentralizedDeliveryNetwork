@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { MetricCard } from '@/components/shared/MetricCard';
@@ -8,12 +9,14 @@ import { OrderCard } from '@/components/orders/OrderCard';
 import { AddressDisplay } from '@/components/orders/AddressDisplay';
 import { OnlineToggle } from '@/components/agent/OnlineToggle';
 import { Package, DollarSign, Clock, CheckCircle, AlertCircle } from 'lucide-react';
+import { formatCurrency } from '@/lib/utils/currency';
 import { useSession } from 'next-auth/react';
 import { agentApi, AvailableOrder, AgentMetrics } from '@/lib/api/agent';
 import { locationTracker, Location } from '@/lib/services/locationTracker';
 import { Skeleton } from '@/components/ui/Skeleton';
 
 export default function AgentDashboard() {
+  const router = useRouter();
   const { data: session } = useSession();
   const [status, setStatus] = useState<'OFFLINE' | 'ONLINE' | 'ON_TRIP'>('OFFLINE');
   const [loading, setLoading] = useState(true);
@@ -24,6 +27,7 @@ export default function AgentDashboard() {
   const [ordersError, setOrdersError] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<AgentMetrics | null>(null);
   const [metricsLoading, setMetricsLoading] = useState(true);
+  const [metricsError, setMetricsError] = useState<string | null>(null);
 
   // Load agent profile and status on mount
   useEffect(() => {
@@ -69,10 +73,39 @@ export default function AgentDashboard() {
   const loadMetrics = async () => {
     try {
       setMetricsLoading(true);
+      setMetricsError(null);
       const data = await agentApi.getMetrics();
-      setMetrics(data);
+      console.log('[Dashboard] Full metrics response:', data);
+      console.log('[Dashboard] Metrics loaded:', { 
+        hasActiveOrder: !!data.activeOrder, 
+        activeOrderId: data.activeOrder?.id,
+        activeOrderStatus: data.activeOrder?.status,
+        todayOrders: data.todayOrders,
+        monthlyEarnings: data.monthlyEarnings,
+        activeOrders: data.activeOrders,
+        completedOrders: data.completedOrders
+      });
+      
+      // Ensure we have valid metrics data
+      if (data && typeof data.todayOrders === 'number') {
+        setMetrics(data);
+        setMetricsError(null); // Clear any previous errors
+      } else {
+        console.error('[Dashboard] Invalid metrics data received:', data);
+        setMetricsError('Invalid metrics data received from server');
+        setMetrics(null); // Clear metrics if invalid
+      }
     } catch (error: any) {
-      console.error('Failed to load metrics:', error);
+      console.error('[Dashboard] Failed to load metrics:', error);
+      console.error('[Dashboard] Error details:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        isNetworkError: error.isNetworkError
+      });
+      const errorMessage = error.response?.data?.error || error.message || 'Failed to load metrics';
+      setMetricsError(errorMessage);
+      setMetrics(null); // Clear metrics on error
       if (error.isNetworkError || !error.response) {
         console.error('Network error: Cannot connect to backend server. Please make sure it is running on port 5000.');
       }
@@ -230,6 +263,26 @@ export default function AgentDashboard() {
         </Card>
       )}
 
+      {/* Metrics Error */}
+      {metricsError && (
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="py-3">
+            <div className="flex items-center gap-2 text-red-800 text-sm">
+              <AlertCircle className="h-4 w-4" />
+              <span>Failed to load metrics: {metricsError}</span>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={loadMetrics}
+                className="ml-auto"
+              >
+                Retry
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Metrics Grid */}
       {metricsLoading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -242,7 +295,7 @@ export default function AgentDashboard() {
             </Card>
           ))}
         </div>
-      ) : metrics ? (
+      ) : metrics && !metricsError ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <MetricCard
             title="Today's Orders"
@@ -260,7 +313,7 @@ export default function AgentDashboard() {
           />
           <MetricCard
             title="Monthly Earnings"
-            value={`$${metrics.monthlyEarnings.toLocaleString()}`}
+            value={formatCurrency(metrics.monthlyEarnings)}
             icon={DollarSign}
             trend={
               metrics.earningsChange !== 0
@@ -287,7 +340,61 @@ export default function AgentDashboard() {
             subtitle={`${metrics.totalOrders} total orders`}
           />
         </div>
-      ) : null}
+      ) : metricsError ? (
+        <Card className="border-yellow-200 bg-yellow-50">
+          <CardContent className="py-4">
+            <div className="flex items-center gap-2 text-yellow-800">
+              <AlertCircle className="h-5 w-5" />
+              <div className="flex-1">
+                <p className="font-medium">Unable to load metrics</p>
+                <p className="text-sm">{metricsError}</p>
+              </div>
+              <Button variant="outline" size="sm" onClick={loadMetrics}>
+                Retry
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="border-gray-200">
+          <CardContent className="py-8 text-center">
+            <p className="text-gray-500">No metrics available</p>
+            <Button variant="outline" size="sm" onClick={loadMetrics} className="mt-2">
+              Load Metrics
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Active Order */}
+      {metrics?.activeOrder && (
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">Active Order</h2>
+              <p className="text-sm text-gray-500 mt-1">Currently assigned to you</p>
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => router.push(`/agent/orders/${metrics.activeOrder?.id}`)}
+            >
+              View Details
+            </Button>
+          </div>
+          <OrderCard
+            orderId={metrics.activeOrder.id}
+            trackingNumber={metrics.activeOrder.trackingNumber}
+            status={metrics.activeOrder.status}
+            from={{ latitude: metrics.activeOrder.pickup.latitude, longitude: metrics.activeOrder.pickup.longitude }}
+            to={{ latitude: metrics.activeOrder.dropoff.latitude, longitude: metrics.activeOrder.dropoff.longitude }}
+            customer={{ name: metrics.activeOrder.partner.name, phone: metrics.activeOrder.partner.phone }}
+            payout={metrics.activeOrder.payout}
+            onSelect={() => router.push(`/agent/orders/${metrics.activeOrder?.id}`)}
+            onTrack={() => router.push(`/agent/orders/${metrics.activeOrder?.id}`)}
+          />
+        </div>
+      )}
 
       {/* Available Orders */}
       {(status === 'ONLINE' || status === 'ON_TRIP') ? (

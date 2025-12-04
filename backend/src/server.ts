@@ -6,12 +6,16 @@ import path from 'path';
 import { getRedisClient, isRedisConnected, testRedisConnection, getRedisStatus } from './lib/redis';
 import { errorHandler } from './middleware/error.middleware';
 import { initializeWebSocket } from './lib/websocket';
+import { prisma } from './lib/prisma';
 import authRoutes from './routes/auth.routes';
 import agentRoutes from './routes/agent.routes';
 import partnerRoutes from './routes/partner.routes';
 import partnerApiRoutes from './routes/partner-api.routes';
 import adminRoutes from './routes/admin.routes';
+// NOTIFICATIONS DISABLED
+// import notificationRoutes from './routes/notification.routes';
 import publicRoutes from './routes/public.routes';
+import ratingRoutes from './routes/rating.routes';
 
 // Load environment variables
 dotenv.config();
@@ -182,6 +186,13 @@ try {
 
   app.use('/api/admin', adminRoutes);
   console.log('✅ Admin routes registered at /api/admin');
+
+  app.use('/api/ratings', ratingRoutes);
+  console.log('✅ Rating routes registered at /api/ratings');
+
+  // NOTIFICATIONS DISABLED
+  // app.use('/api/notifications', notificationRoutes);
+  // console.log('✅ Notification routes registered at /api/notifications');
 } catch (error) {
   console.error('❌ Error registering routes:', error);
   console.error('❌ Error stack:', error instanceof Error ? error.stack : 'No stack');
@@ -295,6 +306,62 @@ app.use((req, res) => {
     ]
   });
 });
+
+// Check database connection and verify AgentRating table exists, run migrations if needed
+(async () => {
+  try {
+    // Simple check to verify AgentRating table exists
+    await prisma.$queryRaw`SELECT 1 FROM "AgentRating" LIMIT 1`;
+    console.log('✅ AgentRating table exists');
+  } catch (error: any) {
+    if (error?.code === 'P2021' || error?.message?.includes('does not exist')) {
+      console.error('❌ AgentRating table does not exist!');
+      console.error('⚠️  Attempting to run migrations automatically...');
+      try {
+        const { execSync } = await import('child_process');
+        console.log('🔄 Running: npx prisma migrate deploy');
+        execSync('npx prisma migrate deploy', { 
+          stdio: 'inherit',
+          env: { ...process.env },
+          cwd: process.cwd()
+        });
+        console.log('✅ Migrations applied successfully');
+        // Verify table exists now
+        try {
+          await prisma.$queryRaw`SELECT 1 FROM "AgentRating" LIMIT 1`;
+          console.log('✅ AgentRating table verified after migration');
+        } catch (verifyError) {
+          console.error('⚠️  Table still not found after migration attempt');
+        }
+      } catch (migrateError: any) {
+        console.error('❌ Failed to run migrations automatically:', migrateError?.message);
+        console.error('⚠️  Error details:', {
+          code: migrateError?.code,
+          signal: migrateError?.signal,
+          status: migrateError?.status,
+        });
+        console.error('⚠️  Please ensure migrations run during build or add to start command');
+      }
+    } else {
+      console.log('ℹ️  Could not verify AgentRating table:', error?.message);
+    }
+  }
+})();
+
+// Initialize periodic delay checker (runs every minute)
+if (process.env.NODE_ENV === 'production' || process.env.ENABLE_DELAY_CHECKER === 'true') {
+  setInterval(() => {
+    (async () => {
+      try {
+        const { delayCheckerService } = await import('./services/delay-checker.service');
+        await delayCheckerService.checkDelayedOrders();
+      } catch (error) {
+        console.error('[Server] Error in periodic delay check:', error);
+      }
+    })();
+  }, 60000); // Check every minute
+  console.log('✅ Periodic delay checker initialized (runs every 60 seconds)');
+}
 
 // Initialize WebSocket server
 initializeWebSocket(httpServer);

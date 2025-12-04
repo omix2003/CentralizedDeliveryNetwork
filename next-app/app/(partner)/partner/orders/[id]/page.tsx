@@ -25,6 +25,12 @@ import {
 import dynamic from 'next/dynamic';
 import { reverseGeocode } from '@/lib/utils/geocoding';
 import { SupportTicketForm } from '@/components/support/SupportTicketForm';
+import { RatingModal } from '@/components/rating/RatingModal';
+import { ratingApi } from '@/lib/api/rating';
+import { Star } from 'lucide-react';
+import { formatCurrency } from '@/lib/utils/currency';
+import { OrderTimer } from '@/components/orders/OrderTimer';
+import { DelayedBadge } from '@/components/orders/DelayedBadge';
 
 // Lazy load Google Places Autocomplete
 const GooglePlacesAutocomplete = dynamic(
@@ -46,6 +52,8 @@ export default function OrderDetailsPage() {
   const [pickupAddress, setPickupAddress] = useState<string | null>(null);
   const [dropoffAddress, setDropoffAddress] = useState<string | null>(null);
   const [addressesLoading, setAddressesLoading] = useState(false);
+  const [showRatingModal, setShowRatingModal] = useState(false);
+  const [existingRating, setExistingRating] = useState<number | null>(null);
   const [editData, setEditData] = useState({
     pickupAddress: '',
     pickupLat: '',
@@ -68,6 +76,20 @@ export default function OrderDetailsPage() {
     }, 10000);
     return () => clearInterval(interval);
   }, [orderId]);
+
+  useEffect(() => {
+    // Check if rating exists for this order
+    if (order?.status === 'DELIVERED' && order?.id) {
+      ratingApi.getOrderRating(order.id)
+        .then(({ rating }) => {
+          setExistingRating(rating.rating);
+        })
+        .catch(() => {
+          // Rating doesn't exist yet, that's fine
+          setExistingRating(null);
+        });
+    }
+  }, [order?.id, order?.status]);
 
   const loadOrder = async () => {
     try {
@@ -248,6 +270,7 @@ export default function OrderDetailsPage() {
                 Order #{order.trackingNumber}
               </h1>
               <StatusBadge status={order.status} />
+              {order.status === 'DELAYED' && <DelayedBadge />}
             </div>
             <p className="text-gray-600">Tracking number: {order.trackingNumber}</p>
           </div>
@@ -297,6 +320,25 @@ export default function OrderDetailsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Details */}
         <div className="lg:col-span-2 space-y-6">
+          {/* Order Timer */}
+          {order.pickedUpAt && order.estimatedDuration && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Clock className="h-5 w-5" />
+                  Delivery Timer
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <OrderTimer
+                  pickedUpAt={order.pickedUpAt}
+                  estimatedDuration={order.estimatedDuration}
+                  timing={order.timing}
+                />
+              </CardContent>
+            </Card>
+          )}
+
           {/* Locations */}
           <Card>
             <CardHeader>
@@ -426,8 +468,27 @@ export default function OrderDetailsPage() {
             </CardContent>
           </Card>
 
-          {/* Order Information */}
-          <Card>
+                  {/* Order Timer */}
+                  {order.pickedUpAt && order.estimatedDuration && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <Clock className="h-5 w-5" />
+                          Delivery Timer
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <OrderTimer
+                          pickedUpAt={order.pickedUpAt}
+                          estimatedDuration={order.estimatedDuration}
+                          timing={order.timing}
+                        />
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Order Information */}
+                  <Card>
             <CardHeader>
               <CardTitle>Order Information</CardTitle>
             </CardHeader>
@@ -474,7 +535,7 @@ export default function OrderDetailsPage() {
                   <div>
                     <p className="text-sm font-medium text-gray-500 mb-1">Payout Amount</p>
                     <p className="text-xl font-bold text-green-600">
-                      ${order.payout.toFixed(2)}
+                      {formatCurrency(order.payout)}
                     </p>
                   </div>
                   <div>
@@ -582,9 +643,40 @@ export default function OrderDetailsPage() {
                 {order.deliveredAt && (
                   <div className="flex items-start gap-3">
                     <div className="h-2 w-2 rounded-full bg-green-600 mt-2"></div>
-                    <div>
+                    <div className="flex-1">
                       <p className="text-sm font-medium text-gray-900">Delivered</p>
                       <p className="text-xs text-gray-500">{formatDate(order.deliveredAt)}</p>
+                      {order.agent && (
+                        <div className="mt-2">
+                          {existingRating ? (
+                            <div className="flex items-center gap-2 text-sm">
+                              <div className="flex items-center gap-1">
+                                {[1, 2, 3, 4, 5].map((star) => (
+                                  <Star
+                                    key={star}
+                                    className={`h-4 w-4 ${
+                                      star <= existingRating
+                                        ? 'fill-yellow-400 text-yellow-400'
+                                        : 'text-gray-300'
+                                    }`}
+                                  />
+                                ))}
+                              </div>
+                              <span className="text-gray-600">You rated this delivery</span>
+                            </div>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setShowRatingModal(true)}
+                              className="mt-1"
+                            >
+                              <Star className="h-4 w-4 mr-1" />
+                              Rate Agent
+                            </Button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -642,6 +734,19 @@ export default function OrderDetailsPage() {
           </Card>
         </div>
       </div>
+
+      {/* Rating Modal */}
+      {order?.agent && (
+        <RatingModal
+          orderId={order.id}
+          agentName={order.agent.name}
+          isOpen={showRatingModal}
+          onClose={() => setShowRatingModal(false)}
+          onSuccess={() => {
+            loadOrder(); // Reload to show the rating
+          }}
+        />
+      )}
     </div>
   );
 }

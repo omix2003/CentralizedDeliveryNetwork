@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { adminApi } from '@/lib/api/admin';
 import { exportToCSV, exportToJSON, getExportFilename } from '@/lib/utils/export';
+import { formatCurrency } from '@/lib/utils/currency';
 import { 
   LineChart, 
   Line, 
@@ -254,7 +255,7 @@ export default function AnalyticsPage() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <MetricCard
           title="Total Revenue"
-          value={`$${analytics.summary.totalRevenue.toFixed(2)}`}
+          value={formatCurrency(analytics.summary.totalRevenue)}
           icon={DollarSign}
         />
         <MetricCard
@@ -394,7 +395,7 @@ export default function AnalyticsPage() {
                     return String(value);
                   }
                 }}
-                formatter={(value: number) => `$${value.toFixed(2)}`}
+                formatter={(value: number) => formatCurrency(value)}
               />
               <Legend />
               <Bar dataKey="revenue" fill="#10b981" name="Revenue ($)" />

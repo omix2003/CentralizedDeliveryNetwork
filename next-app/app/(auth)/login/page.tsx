@@ -31,6 +31,21 @@ function LoginForm() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
+  // Clear any stale session data on login page load
+  useEffect(() => {
+    // Clear any auth-related localStorage items that might be stale
+    if (typeof window !== 'undefined') {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith('nextauth.') || key.startsWith('auth.'))) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(key => localStorage.removeItem(key));
+    }
+  }, []);
+
   // Check for error parameters in URL (NextAuth sometimes passes errors through URL)
   useEffect(() => {
     const errorParam = searchParams.get('error');

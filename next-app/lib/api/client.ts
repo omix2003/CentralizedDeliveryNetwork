@@ -104,9 +104,28 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 401) {
       // In development, log helpful error message
       if (process.env.NODE_ENV === 'development') {
-        console.error('Authentication failed. Please login again.');
+        console.error('Authentication failed. Redirecting to login...');
       }
-      // Could redirect to login page here if needed
+      
+      // Clear session and redirect to login
+      if (typeof window !== 'undefined') {
+        // Clear auth-related storage
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && (key.startsWith('nextauth.') || key.startsWith('auth.'))) {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach(key => localStorage.removeItem(key));
+        sessionStorage.clear();
+        
+        // Prevent back-button navigation
+        window.history.replaceState(null, '', '/login');
+        
+        // Redirect to login page
+        window.location.href = '/login';
+      }
     }
     
     return Promise.reject(error);

@@ -30,7 +30,7 @@ Set these in Render dashboard:
 ## Build Configuration
 
 - [ ] Root Directory: `backend`
-- [ ] Build Command: `npm install && npm run build && npx prisma generate`
+- [ ] Build Command: `npm install && npx prisma generate && npm run build && npx prisma migrate deploy`
 - [ ] Start Command: `npm run start`
 
 ## Post-Deployment

@@ -24,6 +24,14 @@ export interface CreateOrderData {
   estimatedDuration?: number;
 }
 
+export interface OrderTiming {
+  elapsedMinutes: number;
+  remainingMinutes: number;
+  isDelayed: boolean;
+  elapsedTime: string;
+  remainingTime: string;
+}
+
 export interface Order {
   id: string;
   trackingNumber: string;
@@ -47,6 +55,7 @@ export interface Order {
   cancellationReason?: string;
   createdAt: string;
   updatedAt?: string;
+  timing?: OrderTiming;
   agent?: {
     id?: string;
     name: string;
