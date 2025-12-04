@@ -5,12 +5,12 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "nodemon --exec ts-node src/server.ts",
-    "build": "tsc",
+    "build": "npx prisma generate && tsc",
     "start": "node dist/server.js",
-    "build:render": "npm run build && chmod +x node_modules/.bin/prisma && npm run prisma:generate && npm run prisma:migrate:deploy",
-    "prisma:generate": "bash node_modules/.bin/prisma generate",
+    "build:render": "npm run build && chmod +x node_modules/.bin/prisma && npm run prisma:migrate:deploy",
+    "prisma:generate": "npx prisma generate",
     "prisma:migrate": "npx prisma migrate dev",
-    "prisma:migrate:deploy": "bash node_modules/.bin/prisma migrate deploy",
+    "prisma:migrate:deploy": "npx prisma migrate deploy",
     "prisma:studio": "npx prisma studio",
     "prisma:seed": "ts-node prisma/seed.ts",
     "test:assignment": "ts-node src/scripts/test-assignment.ts"

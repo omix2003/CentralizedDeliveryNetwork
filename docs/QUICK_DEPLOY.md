@@ -13,7 +13,7 @@
    - Connect GitHub repo
    - Settings:
      - **Root Directory**: `backend`
-     - **Build Command**: `npm install && npm run build && npx prisma generate && npx prisma migrate deploy`
+     - **Build Command**: `npm install && npx prisma generate && npm run build && npx prisma migrate deploy`
      - **Start Command**: `npm run start`
 
 3. **Set Environment Variables**:

@@ -71,7 +71,7 @@ Or use the provided PowerShell script: `.\fix-submodule.ps1`
    - **Name**: `delivery-network-backend`
    - **Root Directory**: `backend`
    - **Environment**: `Node`
-   - **Build Command**: `npm install && npm run build && npx prisma generate`
+   - **Build Command**: `npm install && npx prisma generate && npm run build && npx prisma migrate deploy`
    - **Start Command**: `npm run start`
 
 3. **Set Environment Variables** in Render Dashboard:
