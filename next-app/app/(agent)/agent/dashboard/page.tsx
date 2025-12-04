@@ -89,14 +89,23 @@ export default function AgentDashboard() {
       // Ensure we have valid metrics data
       if (data && typeof data.todayOrders === 'number') {
         setMetrics(data);
+        setMetricsError(null); // Clear any previous errors
       } else {
         console.error('[Dashboard] Invalid metrics data received:', data);
         setMetricsError('Invalid metrics data received from server');
+        setMetrics(null); // Clear metrics if invalid
       }
     } catch (error: any) {
-      console.error('Failed to load metrics:', error);
+      console.error('[Dashboard] Failed to load metrics:', error);
+      console.error('[Dashboard] Error details:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        isNetworkError: error.isNetworkError
+      });
       const errorMessage = error.response?.data?.error || error.message || 'Failed to load metrics';
       setMetricsError(errorMessage);
+      setMetrics(null); // Clear metrics on error
       if (error.isNetworkError || !error.response) {
         console.error('Network error: Cannot connect to backend server. Please make sure it is running on port 5000.');
       }
@@ -286,7 +295,7 @@ export default function AgentDashboard() {
             </Card>
           ))}
         </div>
-      ) : metrics ? (
+      ) : metrics && !metricsError ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <MetricCard
             title="Today's Orders"
@@ -331,7 +340,31 @@ export default function AgentDashboard() {
             subtitle={`${metrics.totalOrders} total orders`}
           />
         </div>
-      ) : null}
+      ) : metricsError ? (
+        <Card className="border-yellow-200 bg-yellow-50">
+          <CardContent className="py-4">
+            <div className="flex items-center gap-2 text-yellow-800">
+              <AlertCircle className="h-5 w-5" />
+              <div className="flex-1">
+                <p className="font-medium">Unable to load metrics</p>
+                <p className="text-sm">{metricsError}</p>
+              </div>
+              <Button variant="outline" size="sm" onClick={loadMetrics}>
+                Retry
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="border-gray-200">
+          <CardContent className="py-8 text-center">
+            <p className="text-gray-500">No metrics available</p>
+            <Button variant="outline" size="sm" onClick={loadMetrics} className="mt-2">
+              Load Metrics
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Active Order */}
       {metrics?.activeOrder && (
