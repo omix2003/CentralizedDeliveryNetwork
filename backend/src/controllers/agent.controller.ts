@@ -1002,8 +1002,8 @@ export const agentController = {
             },
           });
 
-          const activeStatuses: OrderStatus[] = ['ASSIGNED', 'PICKED_UP', 'OUT_FOR_DELIVERY', 'DELAYED'];
-          if (order && activeStatuses.includes(order.status as OrderStatus) && order.partner && order.partner.user) {
+          const activeStatuses: OrderStatus[] = [OrderStatus.ASSIGNED, OrderStatus.PICKED_UP, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELAYED];
+          if (order && activeStatuses.includes(order.status) && order.partner && order.partner.user) {
             // Check and update delayed status
             const { delayCheckerService } = await import('../services/delay-checker.service');
             await delayCheckerService.checkOrderDelay(order.id);
