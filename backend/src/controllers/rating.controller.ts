@@ -6,10 +6,16 @@ export const ratingController = {
   // POST /api/ratings - Submit a rating for an agent
   async submitRating(req: Request, res: Response, next: NextFunction) {
     try {
+      console.log('[Rating] Submit rating request received:', {
+        body: req.body,
+        hasPartnerId: !!getPartnerId(req),
+      });
+
       const { orderId, rating, comment } = req.body;
       const partnerId = getPartnerId(req);
 
       if (!partnerId) {
+        console.log('[Rating] No partnerId found in request');
         return res.status(403).json({ error: 'Only partners can rate agents' });
       }
 
@@ -47,31 +53,64 @@ export const ratingController = {
       }
 
       // Check if rating already exists
-      const existingRating = await prisma.agentRating.findUnique({
-        where: { orderId },
-      });
+      let existingRating;
+      try {
+        existingRating = await prisma.agentRating.findUnique({
+          where: { orderId },
+        });
+      } catch (dbError: any) {
+        console.error('[Rating] Database error when checking existing rating:', {
+          message: dbError?.message,
+          code: dbError?.code,
+          meta: dbError?.meta,
+        });
+        // If table doesn't exist, provide helpful error
+        if (dbError?.code === 'P2021' || dbError?.message?.includes('does not exist')) {
+          return res.status(500).json({
+            error: 'Database migration required',
+            message: 'The AgentRating table does not exist. Please run database migrations: npx prisma migrate deploy',
+          });
+        }
+        throw dbError;
+      }
 
       let ratingRecord;
-      if (existingRating) {
-        // Update existing rating
-        ratingRecord = await prisma.agentRating.update({
-          where: { id: existingRating.id },
-          data: {
-            rating,
-            comment: comment || null,
-          },
+      try {
+        if (existingRating) {
+          // Update existing rating
+          ratingRecord = await prisma.agentRating.update({
+            where: { id: existingRating.id },
+            data: {
+              rating,
+              comment: comment || null,
+            },
+          });
+        } else {
+          // Create new rating
+          ratingRecord = await prisma.agentRating.create({
+            data: {
+              orderId,
+              agentId: order.agentId,
+              partnerId,
+              rating,
+              comment: comment || null,
+            },
+          });
+        }
+      } catch (dbError: any) {
+        console.error('[Rating] Database error when creating/updating rating:', {
+          message: dbError?.message,
+          code: dbError?.code,
+          meta: dbError?.meta,
         });
-      } else {
-        // Create new rating
-        ratingRecord = await prisma.agentRating.create({
-          data: {
-            orderId,
-            agentId: order.agentId,
-            partnerId,
-            rating,
-            comment: comment || null,
-          },
-        });
+        // If table doesn't exist, provide helpful error
+        if (dbError?.code === 'P2021' || dbError?.message?.includes('does not exist')) {
+          return res.status(500).json({
+            error: 'Database migration required',
+            message: 'The AgentRating table does not exist. Please run database migrations: npx prisma migrate deploy',
+          });
+        }
+        throw dbError;
       }
 
       // Recalculate agent's average rating
@@ -93,7 +132,13 @@ export const ratingController = {
         message: 'Rating submitted successfully',
         rating: ratingRecord,
       });
-    } catch (error) {
+    } catch (error: any) {
+      console.error('[Rating] Error submitting rating:', {
+        message: error?.message,
+        stack: error?.stack,
+        code: error?.code,
+        meta: error?.meta,
+      });
       next(error);
     }
   },
