@@ -2,8 +2,7 @@ services:
   - type: web
     name: delivery-network-backend
     env: node
-    buildCommand: npm install && npx prisma generate && npm run build
-    # Migrations run automatically via prestart script before server starts
+    buildCommand: npm install && npx prisma generate && npm run build && npx prisma migrate deploy
     startCommand: npm run start
     envVars:
       - key: NODE_ENV
