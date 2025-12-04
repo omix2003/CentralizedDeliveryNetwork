@@ -73,6 +73,11 @@ export default function AgentDashboard() {
     try {
       setMetricsLoading(true);
       const data = await agentApi.getMetrics();
+      console.log('[Dashboard] Metrics loaded:', { 
+        hasActiveOrder: !!data.activeOrder, 
+        activeOrderId: data.activeOrder?.id,
+        activeOrderStatus: data.activeOrder?.status 
+      });
       setMetrics(data);
     } catch (error: any) {
       console.error('Failed to load metrics:', error);
@@ -293,7 +298,7 @@ export default function AgentDashboard() {
       ) : null}
 
       {/* Active Order */}
-      {metrics?.activeOrder && (
+      {metrics?.activeOrder ? (
         <div>
           <div className="flex items-center justify-between mb-4">
             <div>

@@ -959,10 +959,34 @@ export const agentController = {
       });
 
       // Get active order details if exists
+      // Check both currentOrderId and any active order assigned to this agent
       let activeOrder = null;
-      if (agent.currentOrderId) {
+      
+      // First try currentOrderId
+      let orderToCheck = agent.currentOrderId;
+      
+      // If no currentOrderId, check for any active order assigned to this agent
+      if (!orderToCheck) {
+        const activeOrderRecord = await prisma.order.findFirst({
+          where: {
+            agentId,
+            status: {
+              in: ['ASSIGNED', 'PICKED_UP', 'OUT_FOR_DELIVERY', 'DELAYED'] as OrderStatus[],
+            },
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+          select: {
+            id: true,
+          },
+        });
+        orderToCheck = activeOrderRecord?.id || null;
+      }
+      
+      if (orderToCheck) {
         const order = await prisma.order.findUnique({
-          where: { id: agent.currentOrderId },
+          where: { id: orderToCheck },
           include: {
             partner: {
               include: {
