@@ -27,6 +27,7 @@ export default function AgentDashboard() {
   const [ordersError, setOrdersError] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<AgentMetrics | null>(null);
   const [metricsLoading, setMetricsLoading] = useState(true);
+  const [metricsError, setMetricsError] = useState<string | null>(null);
 
   // Load agent profile and status on mount
   useEffect(() => {
@@ -72,15 +73,20 @@ export default function AgentDashboard() {
   const loadMetrics = async () => {
     try {
       setMetricsLoading(true);
+      setMetricsError(null);
       const data = await agentApi.getMetrics();
       console.log('[Dashboard] Metrics loaded:', { 
         hasActiveOrder: !!data.activeOrder, 
         activeOrderId: data.activeOrder?.id,
-        activeOrderStatus: data.activeOrder?.status 
+        activeOrderStatus: data.activeOrder?.status,
+        todayOrders: data.todayOrders,
+        monthlyEarnings: data.monthlyEarnings
       });
       setMetrics(data);
     } catch (error: any) {
       console.error('Failed to load metrics:', error);
+      const errorMessage = error.response?.data?.error || error.message || 'Failed to load metrics';
+      setMetricsError(errorMessage);
       if (error.isNetworkError || !error.response) {
         console.error('Network error: Cannot connect to backend server. Please make sure it is running on port 5000.');
       }
@@ -233,6 +239,26 @@ export default function AgentDashboard() {
                 Location tracking active • 
                 {currentLocation.latitude.toFixed(6)}, {currentLocation.longitude.toFixed(6)}
               </span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Metrics Error */}
+      {metricsError && (
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="py-3">
+            <div className="flex items-center gap-2 text-red-800 text-sm">
+              <AlertCircle className="h-4 w-4" />
+              <span>Failed to load metrics: {metricsError}</span>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={loadMetrics}
+                className="ml-auto"
+              >
+                Retry
+              </Button>
             </div>
           </CardContent>
         </Card>
