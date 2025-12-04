@@ -63,7 +63,6 @@ export function Providers({ children }: { children: ReactNode }) {
         // Enable cross-tab session synchronization
         refetchOnWindowFocus={false} // Disabled to prevent re-renders on window focus
         refetchInterval={5 * 60} // Refetch every 5 minutes to check for session changes
-        refetchOnMount={true} // Only refetch on component mount
       >
         <SessionSync>
           <ToastProvider>

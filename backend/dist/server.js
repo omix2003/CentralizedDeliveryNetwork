@@ -4,38 +4,299 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
+const http_1 = __importDefault(require("http"));
 const cors_1 = __importDefault(require("cors"));
 const dotenv_1 = __importDefault(require("dotenv"));
+const path_1 = __importDefault(require("path"));
+const redis_1 = require("./lib/redis");
+const error_middleware_1 = require("./middleware/error.middleware");
+const websocket_1 = require("./lib/websocket");
+const auth_routes_1 = __importDefault(require("./routes/auth.routes"));
+const agent_routes_1 = __importDefault(require("./routes/agent.routes"));
+const partner_routes_1 = __importDefault(require("./routes/partner.routes"));
+const partner_api_routes_1 = __importDefault(require("./routes/partner-api.routes"));
+const admin_routes_1 = __importDefault(require("./routes/admin.routes"));
+// NOTIFICATIONS DISABLED
+// import notificationRoutes from './routes/notification.routes';
+const public_routes_1 = __importDefault(require("./routes/public.routes"));
+const rating_routes_1 = __importDefault(require("./routes/rating.routes"));
 // Load environment variables
 dotenv_1.default.config();
 const app = (0, express_1.default)();
+const httpServer = http_1.default.createServer(app);
 const PORT = process.env.PORT || 5000;
+// Initialize Redis connection (optional - app will work without it)
+if (process.env.REDIS_ENABLED === 'false') {
+    console.log('ℹ️  Redis is disabled (REDIS_ENABLED=false). Running without Redis.');
+}
+else {
+    try {
+        (0, redis_1.getRedisClient)();
+    }
+    catch (error) {
+        // Redis initialization failed, but we'll continue without it
+    }
+}
+// CORS configuration - support multiple origins
+const corsOptions = {
+    origin: (origin, callback) => {
+        const allowedOrigins = process.env.CORS_ORIGIN
+            ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
+            : ['http://localhost:3000'];
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) {
+            return callback(null, true);
+        }
+        if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+            callback(null, true);
+        }
+        else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key'],
+};
 // Middleware
-app.use((0, cors_1.default)({
-    origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
-    credentials: true
+app.use((0, cors_1.default)(corsOptions));
+// JSON parser with error handling
+app.use(express_1.default.json({
+    strict: true
 }));
-app.use(express_1.default.json());
 app.use(express_1.default.urlencoded({ extended: true }));
-// Health check route
-app.get('/health', (req, res) => {
-    res.json({ status: 'ok', message: 'Backend server is running' });
-});
-// API routes will be added here
-// app.use('/api/auth', authRoutes);
-// app.use('/api/agent', agentRoutes);
-// app.use('/api/partner', partnerRoutes);
-// app.use('/api/admin', adminRoutes);
-// 404 handler
-app.use((req, res) => {
-    res.status(404).json({ error: 'Route not found' });
-});
-// Error handler
+// Serve static files from uploads directory with CORS headers
+app.use('/uploads', (req, res, next) => {
+    // Get the origin from the request
+    const requestOrigin = req.headers.origin;
+    const allowedOrigins = process.env.CORS_ORIGIN
+        ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
+        : ['http://localhost:3000'];
+    // Set CORS headers for static files
+    if (requestOrigin && (allowedOrigins.includes(requestOrigin) || allowedOrigins.includes('*'))) {
+        res.header('Access-Control-Allow-Origin', requestOrigin);
+    }
+    else if (allowedOrigins.length > 0) {
+        res.header('Access-Control-Allow-Origin', allowedOrigins[0]);
+    }
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type');
+    // Handle preflight requests
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
+    }
+    next();
+}, express_1.default.static(path_1.default.join(process.cwd(), 'uploads')));
+// Custom JSON error handler
 app.use((err, req, res, next) => {
-    console.error(err.stack);
-    res.status(500).json({ error: 'Something went wrong!' });
+    if (err instanceof SyntaxError && 'body' in err) {
+        return res.status(400).json({
+            error: 'Invalid JSON',
+            message: 'The request body contains invalid JSON. Please ensure you use double quotes for property names and values, and check for trailing commas.',
+            details: err.message
+        });
+    }
+    next(err);
 });
-app.listen(PORT, () => {
+// Request logging middleware (for debugging)
+app.use((req, res, next) => {
+    console.log(`📥 ${req.method} ${req.originalUrl}`);
+    // Log if it's an agent route
+    if (req.originalUrl.startsWith('/api/agent')) {
+        console.log(`[DEBUG] Agent route request: ${req.method} ${req.originalUrl}`);
+        console.log(`[DEBUG] Has auth header: ${!!req.headers.authorization}`);
+        console.log(`[DEBUG] Auth header value: ${req.headers.authorization ? req.headers.authorization.substring(0, 20) + '...' : 'none'}`);
+    }
+    next();
+});
+// Health check route
+app.get('/health', async (req, res) => {
+    let redisStatus = 'disconnected';
+    let redisDetails = null;
+    try {
+        const isConnected = await (0, redis_1.testRedisConnection)();
+        redisStatus = isConnected ? 'connected' : 'disconnected';
+        redisDetails = (0, redis_1.getRedisStatus)();
+    }
+    catch (error) {
+        redisStatus = 'error';
+        redisDetails = { error: 'Failed to check Redis status' };
+    }
+    res.json({
+        status: 'ok',
+        message: 'Backend server is running',
+        redis: redisStatus,
+        redisDetails,
+    });
+});
+// API routes
+console.log('📦 Registering API routes...');
+try {
+    console.log('[DEBUG] Imported agentRoutes type:', typeof agent_routes_1.default);
+    console.log('[DEBUG] agentRoutes constructor:', agent_routes_1.default?.constructor?.name);
+    // Public routes (no authentication)
+    app.use('/api/public', public_routes_1.default);
+    app.use('/api/auth', auth_routes_1.default);
+    console.log('✅ Auth routes registered at /api/auth');
+    // Verify agentRoutes is actually a router
+    const agentRoutesAny = agent_routes_1.default;
+    if (!agent_routes_1.default || typeof agent_routes_1.default !== 'function') {
+        console.error('❌ agentRoutes is not a valid router!', {
+            type: typeof agent_routes_1.default,
+            value: agent_routes_1.default,
+            constructor: agentRoutesAny?.constructor?.name
+        });
+        throw new Error('agentRoutes is not a valid Express router');
+    }
+    app.use('/api/agent', agent_routes_1.default);
+    console.log('✅ Agent routes registered at /api/agent');
+    console.log('[DEBUG] Agent routes stack:', agentRoutesAny?.stack?.length || 0, 'routes');
+    // Log the actual routes in the stack
+    if (agentRoutesAny?.stack) {
+        console.log('[DEBUG] Agent routes in stack:');
+        agentRoutesAny.stack.forEach((layer, index) => {
+            if (layer.route) {
+                console.log(`  [${index}] ${Object.keys(layer.route.methods).join(', ').toUpperCase()} ${layer.route.path}`);
+            }
+            else if (layer.name === 'router' || layer.regexp) {
+                console.log(`  [${index}] Middleware: ${layer.name || 'unnamed'}`);
+            }
+            else {
+                console.log(`  [${index}] ${layer.name || 'unknown'}`);
+            }
+        });
+    }
+    app.use('/api/partner', partner_routes_1.default);
+    console.log('✅ Partner routes registered at /api/partner');
+    app.use('/api/partner-api', partner_api_routes_1.default);
+    console.log('✅ Partner API routes registered at /api/partner-api (API key auth)');
+    app.use('/api/admin', admin_routes_1.default);
+    console.log('✅ Admin routes registered at /api/admin');
+    app.use('/api/ratings', rating_routes_1.default);
+    console.log('✅ Rating routes registered at /api/ratings');
+    // NOTIFICATIONS DISABLED
+    // app.use('/api/notifications', notificationRoutes);
+    // console.log('✅ Notification routes registered at /api/notifications');
+}
+catch (error) {
+    console.error('❌ Error registering routes:', error);
+    console.error('❌ Error stack:', error instanceof Error ? error.stack : 'No stack');
+}
+// Debug route to test routing
+app.get('/api/test', (req, res) => {
+    res.json({ message: 'API routing is working', path: req.path });
+});
+// Debug route to list all registered routes
+app.get('/api/debug/routes', (req, res) => {
+    const routes = [];
+    const agentRoutes = [];
+    // Get all registered routes from Express
+    app._router?.stack?.forEach((middleware) => {
+        if (middleware.route) {
+            // Direct route
+            const routeInfo = {
+                path: middleware.route.path,
+                methods: Object.keys(middleware.route.methods),
+                type: 'direct'
+            };
+            routes.push(routeInfo);
+            if (routeInfo.path.includes('/agent')) {
+                agentRoutes.push(routeInfo);
+            }
+        }
+        else if (middleware.name === 'router') {
+            // Router middleware
+            const basePath = middleware.regexp.source
+                .replace('\\/?', '')
+                .replace('(?=\\/|$)', '')
+                .replace(/\\\//g, '/')
+                .replace(/\^/g, '')
+                .replace(/\$/g, '');
+            middleware.handle?.stack?.forEach((handler) => {
+                if (handler.route) {
+                    const fullPath = basePath + handler.route.path;
+                    const routeInfo = {
+                        path: fullPath,
+                        methods: Object.keys(handler.route.methods),
+                        basePath: basePath,
+                        routePath: handler.route.path,
+                        type: 'router'
+                    };
+                    routes.push(routeInfo);
+                    if (fullPath.includes('/agent')) {
+                        agentRoutes.push(routeInfo);
+                    }
+                }
+                else if (handler.name === 'router') {
+                    // Nested router
+                    const nestedBasePath = handler.regexp.source
+                        .replace('\\/?', '')
+                        .replace('(?=\\/|$)', '')
+                        .replace(/\\\//g, '/')
+                        .replace(/\^/g, '')
+                        .replace(/\$/g, '');
+                    handler.handle?.stack?.forEach((nestedHandler) => {
+                        if (nestedHandler.route) {
+                            const fullPath = basePath + nestedBasePath + nestedHandler.route.path;
+                            const routeInfo = {
+                                path: fullPath,
+                                methods: Object.keys(nestedHandler.route.methods),
+                                basePath: basePath,
+                                nestedBasePath: nestedBasePath,
+                                routePath: nestedHandler.route.path,
+                                type: 'nested-router'
+                            };
+                            routes.push(routeInfo);
+                            if (fullPath.includes('/agent')) {
+                                agentRoutes.push(routeInfo);
+                            }
+                        }
+                    });
+                }
+            });
+        }
+    });
+    res.json({
+        message: 'Registered routes',
+        totalRoutes: routes.length,
+        agentRoutesCount: agentRoutes.length,
+        agentRoutes: agentRoutes,
+        allRoutes: routes.slice(0, 50), // Limit to first 50 for readability
+    });
+});
+// Error handler - must come before 404 handler
+app.use(error_middleware_1.errorHandler);
+// 404 handler - must be last (after error handler)
+app.use((req, res) => {
+    console.log(`❌ 404 - Route not found: ${req.method} ${req.originalUrl}`);
+    res.status(404).json({
+        error: 'Route not found',
+        method: req.method,
+        path: req.originalUrl,
+        availableRoutes: [
+            'GET /health',
+            'GET /api/test',
+            'POST /api/auth/login',
+            'POST /api/auth/register',
+            'GET /api/auth/me',
+            'GET /api/agent/profile',
+            'GET /api/agent/metrics',
+            'POST /api/agent/status'
+        ]
+    });
+});
+// Initialize WebSocket server
+(0, websocket_1.initializeWebSocket)(httpServer);
+// Start HTTP server
+httpServer.listen(PORT, () => {
     console.log(`🚀 Backend server running on http://localhost:${PORT}`);
+    console.log(`📡 Available endpoints:`);
+    console.log(`   GET  http://localhost:${PORT}/health`);
+    console.log(`   GET  http://localhost:${PORT}/api/test`);
+    console.log(`   POST http://localhost:${PORT}/api/auth/login`);
+    console.log(`   POST http://localhost:${PORT}/api/auth/register`);
+    console.log(`   GET  http://localhost:${PORT}/api/auth/me`);
+    console.log(`   WebSocket: ws://localhost:${PORT}/socket.io`);
 });
 //# sourceMappingURL=server.js.map

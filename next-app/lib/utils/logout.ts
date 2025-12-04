@@ -1,7 +1,7 @@
 /**
  * Simple logout utility
  */
-export async function performLogout(signOut: (options?: { redirect?: boolean; callbackUrl?: string }) => Promise<void>, router: any) {
+export async function performLogout(signOut: any, router: any) {
   try {
     await signOut({ 
       redirect: true,
