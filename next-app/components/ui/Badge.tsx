@@ -53,6 +53,7 @@ export function StatusBadge({ status, className }: { status: string; className?:
     'IN_TRANSIT': { variant: 'purple', label: 'In Transit' },
     'OUT_FOR_DELIVERY': { variant: 'info', label: 'Out for Delivery' },
     'DELIVERED': { variant: 'success', label: 'Delivered' },
+    'DELAYED': { variant: 'danger', label: 'Delayed' },
     'CANCELLED': { variant: 'danger', label: 'Cancelled' },
     'ON_TRIP': { variant: 'info', label: 'On Trip' },
     'ONLINE': { variant: 'success', label: 'Online' },

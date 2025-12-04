@@ -181,6 +181,14 @@ export interface AvailableOrder {
   };
 }
 
+export interface OrderTiming {
+  elapsedMinutes: number | null;
+  remainingMinutes: number | null;
+  isDelayed: boolean;
+  elapsedTime: string | null;
+  remainingTime: string | null;
+}
+
 export interface AgentOrder {
   id: string;
   trackingNumber: string;
@@ -203,6 +211,7 @@ export interface AgentOrder {
   deliveredAt?: string;
   cancelledAt?: string;
   cancellationReason?: string;
+  timing?: OrderTiming;
   partner: {
     id: string;
     name: string;

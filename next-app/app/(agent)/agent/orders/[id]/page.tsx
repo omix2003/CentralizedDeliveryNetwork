@@ -25,6 +25,8 @@ import {
 import dynamic from 'next/dynamic';
 import { reverseGeocode } from '@/lib/utils/geocoding';
 import { SupportTicketForm } from '@/components/support/SupportTicketForm';
+import { OrderTimer } from '@/components/orders/OrderTimer';
+import { DelayedBadge } from '@/components/orders/DelayedBadge';
 
 // Dynamically import map component to avoid SSR issues
 const OrderTrackingMap = dynamic(() => import('@/components/maps/OrderTrackingMap').then(mod => ({ default: mod.OrderTrackingMap })), {
@@ -172,7 +174,10 @@ export default function AgentOrderDetailsPage() {
             <p className="text-gray-600 mt-1">#{order.trackingNumber}</p>
           </div>
         </div>
-        <StatusBadge status={order.status} />
+        <div className="flex items-center gap-2">
+          <StatusBadge status={order.status} />
+          {order.status === 'DELAYED' && <DelayedBadge />}
+        </div>
       </div>
 
       {/* Update Error */}
@@ -190,6 +195,25 @@ export default function AgentOrderDetailsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
+          {/* Order Timer */}
+          {order.pickedUpAt && order.estimatedDuration && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Clock className="h-5 w-5" />
+                  Delivery Timer
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <OrderTimer
+                  pickedUpAt={order.pickedUpAt}
+                  estimatedDuration={order.estimatedDuration}
+                  timing={order.timing}
+                />
+              </CardContent>
+            </Card>
+          )}
+
           {/* Status Actions */}
           {canUpdateStatus() && (
             <Card>

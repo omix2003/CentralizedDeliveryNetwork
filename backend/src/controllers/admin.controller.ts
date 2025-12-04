@@ -1126,7 +1126,35 @@ export const adminController = {
         return res.status(404).json({ error: 'Order not found' });
       }
 
-      res.json(order);
+      // Check and update delayed status
+      const { delayCheckerService } = await import('../services/delay-checker.service');
+      await delayCheckerService.checkOrderDelay(id);
+      
+      // Refresh order to get updated status
+      const refreshedOrder = await prisma.order.findUnique({
+        where: { id },
+      });
+      
+      // Calculate timing information
+      const timing = delayCheckerService.getOrderTiming({
+        pickedUpAt: refreshedOrder?.pickedUpAt || order.pickedUpAt,
+        estimatedDuration: refreshedOrder?.estimatedDuration || order.estimatedDuration,
+      });
+
+      // Add timing to order response
+      const orderWithTiming = {
+        ...order,
+        status: refreshedOrder?.status || order.status,
+        timing: {
+          elapsedMinutes: timing.elapsedMinutes,
+          remainingMinutes: timing.remainingMinutes,
+          isDelayed: timing.isDelayed,
+          elapsedTime: timing.elapsedTime,
+          remainingTime: timing.remainingTime,
+        },
+      };
+
+      res.json(orderWithTiming);
     } catch (error) {
       next(error);
     }

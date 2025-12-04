@@ -29,6 +29,8 @@ import { RatingModal } from '@/components/rating/RatingModal';
 import { ratingApi } from '@/lib/api/rating';
 import { Star } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils/currency';
+import { OrderTimer } from '@/components/orders/OrderTimer';
+import { DelayedBadge } from '@/components/orders/DelayedBadge';
 
 // Lazy load Google Places Autocomplete
 const GooglePlacesAutocomplete = dynamic(
@@ -268,6 +270,7 @@ export default function OrderDetailsPage() {
                 Order #{order.trackingNumber}
               </h1>
               <StatusBadge status={order.status} />
+              {order.status === 'DELAYED' && <DelayedBadge />}
             </div>
             <p className="text-gray-600">Tracking number: {order.trackingNumber}</p>
           </div>
@@ -317,6 +320,25 @@ export default function OrderDetailsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Details */}
         <div className="lg:col-span-2 space-y-6">
+          {/* Order Timer */}
+          {order.pickedUpAt && order.estimatedDuration && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Clock className="h-5 w-5" />
+                  Delivery Timer
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <OrderTimer
+                  pickedUpAt={order.pickedUpAt}
+                  estimatedDuration={order.estimatedDuration}
+                  timing={order.timing}
+                />
+              </CardContent>
+            </Card>
+          )}
+
           {/* Locations */}
           <Card>
             <CardHeader>
@@ -446,8 +468,27 @@ export default function OrderDetailsPage() {
             </CardContent>
           </Card>
 
-          {/* Order Information */}
-          <Card>
+                  {/* Order Timer */}
+                  {order.pickedUpAt && order.estimatedDuration && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <Clock className="h-5 w-5" />
+                          Delivery Timer
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <OrderTimer
+                          pickedUpAt={order.pickedUpAt}
+                          estimatedDuration={order.estimatedDuration}
+                          timing={order.timing}
+                        />
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Order Information */}
+                  <Card>
             <CardHeader>
               <CardTitle>Order Information</CardTitle>
             </CardHeader>

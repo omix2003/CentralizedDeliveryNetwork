@@ -59,6 +59,7 @@ export const updateOrderStatusSchema =z.object({
         'OUT_FOR_DELIVERY',
         'DELIVERED',
         'CANCELLED',
+        'DELAYED',
     ]),
     cancellationReason: z.string().optional(),
 });

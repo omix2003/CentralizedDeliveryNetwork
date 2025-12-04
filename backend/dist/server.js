@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -11,6 +44,7 @@ const path_1 = __importDefault(require("path"));
 const redis_1 = require("./lib/redis");
 const error_middleware_1 = require("./middleware/error.middleware");
 const websocket_1 = require("./lib/websocket");
+const prisma_1 = require("./lib/prisma");
 const auth_routes_1 = __importDefault(require("./routes/auth.routes"));
 const agent_routes_1 = __importDefault(require("./routes/agent.routes"));
 const partner_routes_1 = __importDefault(require("./routes/partner.routes"));
@@ -286,6 +320,76 @@ app.use((req, res) => {
         ]
     });
 });
+// Check database connection and verify AgentRating table exists, run migrations if needed
+(async () => {
+    try {
+        // Simple check to verify AgentRating table exists
+        await prisma_1.prisma.$queryRaw `SELECT 1 FROM "AgentRating" LIMIT 1`;
+        console.log('✅ AgentRating table exists');
+    }
+    catch (error) {
+        if (error?.code === 'P2021' || error?.message?.includes('does not exist')) {
+            console.error('❌ AgentRating table does not exist!');
+            console.error('⚠️  Attempting to run migrations automatically...');
+            try {
+                const { execSync } = await Promise.resolve().then(() => __importStar(require('child_process')));
+                console.log('🔄 Running: npx prisma migrate deploy');
+                execSync('npx prisma migrate deploy', {
+                    stdio: 'inherit',
+                    env: { ...process.env },
+                    cwd: process.cwd()
+                });
+                console.log('✅ Migrations applied successfully');
+                // Verify table exists now
+                try {
+                    await prisma_1.prisma.$queryRaw `SELECT 1 FROM "AgentRating" LIMIT 1`;
+                    console.log('✅ AgentRating table verified after migration');
+                }
+                catch (verifyError) {
+                    console.error('⚠️  Table still not found after migration attempt');
+                }
+            }
+            catch (migrateError) {
+                console.error('❌ Failed to run migrations automatically:', migrateError?.message);
+                console.error('⚠️  Error details:', {
+                    code: migrateError?.code,
+                    signal: migrateError?.signal,
+                    status: migrateError?.status,
+                });
+                console.error('⚠️  Please ensure migrations run during build or add to start command');
+            }
+        }
+        else {
+            console.log('ℹ️  Could not verify AgentRating table:', error?.message);
+        }
+    }
+})();
+// Initialize delay checker service - check for delayed orders every minute
+if (process.env.NODE_ENV === 'production' || process.env.ENABLE_DELAY_CHECKER === 'true') {
+    const { delayCheckerService } = await Promise.resolve().then(() => __importStar(require('./services/delay-checker.service')));
+    setInterval(async () => {
+        try {
+            await delayCheckerService.checkDelayedOrders();
+        }
+        catch (error) {
+            console.error('[Server] Error in delay checker:', error);
+        }
+    }, 60000); // Check every minute
+    console.log('✅ Delay checker service initialized (checking every 60 seconds)');
+}
+// Initialize periodic delay checker (runs every minute)
+if (process.env.NODE_ENV === 'production' || process.env.ENABLE_DELAY_CHECKER === 'true') {
+    setInterval(async () => {
+        try {
+            const { delayCheckerService } = await Promise.resolve().then(() => __importStar(require('./services/delay-checker.service')));
+            await delayCheckerService.checkDelayedOrders();
+        }
+        catch (error) {
+            console.error('[Server] Error in periodic delay check:', error);
+        }
+    }, 60000); // Check every minute
+    console.log('✅ Periodic delay checker initialized (runs every 60 seconds)');
+}
 // Initialize WebSocket server
 (0, websocket_1.initializeWebSocket)(httpServer);
 // Start HTTP server
