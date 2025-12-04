@@ -75,14 +75,24 @@ export default function AgentDashboard() {
       setMetricsLoading(true);
       setMetricsError(null);
       const data = await agentApi.getMetrics();
+      console.log('[Dashboard] Full metrics response:', data);
       console.log('[Dashboard] Metrics loaded:', { 
         hasActiveOrder: !!data.activeOrder, 
         activeOrderId: data.activeOrder?.id,
         activeOrderStatus: data.activeOrder?.status,
         todayOrders: data.todayOrders,
-        monthlyEarnings: data.monthlyEarnings
+        monthlyEarnings: data.monthlyEarnings,
+        activeOrders: data.activeOrders,
+        completedOrders: data.completedOrders
       });
-      setMetrics(data);
+      
+      // Ensure we have valid metrics data
+      if (data && typeof data.todayOrders === 'number') {
+        setMetrics(data);
+      } else {
+        console.error('[Dashboard] Invalid metrics data received:', data);
+        setMetricsError('Invalid metrics data received from server');
+      }
     } catch (error: any) {
       console.error('Failed to load metrics:', error);
       const errorMessage = error.response?.data?.error || error.message || 'Failed to load metrics';
