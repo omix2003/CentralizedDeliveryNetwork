@@ -953,10 +953,72 @@ export const agentController = {
         where: {
           agentId,
           status: {
-            in: ['ASSIGNED', 'PICKED_UP', 'OUT_FOR_DELIVERY'],
+            in: ['ASSIGNED', 'PICKED_UP', 'OUT_FOR_DELIVERY', 'DELAYED'],
           },
         },
       });
+
+      // Get active order details if exists
+      let activeOrder = null;
+      if (agent.currentOrderId) {
+        const order = await prisma.order.findUnique({
+          where: { id: agent.currentOrderId },
+          include: {
+            partner: {
+              include: {
+                user: {
+                  select: {
+                    name: true,
+                    phone: true,
+                  },
+                },
+              },
+            },
+          },
+        });
+
+        if (order && ['ASSIGNED', 'PICKED_UP', 'OUT_FOR_DELIVERY', 'DELAYED'].includes(order.status)) {
+          // Check and update delayed status
+          const { delayCheckerService } = await import('../services/delay-checker.service');
+          await delayCheckerService.checkOrderDelay(order.id);
+          
+          // Refresh order to get updated status
+          const refreshedOrder = await prisma.order.findUnique({
+            where: { id: order.id },
+          });
+
+          // Calculate timing information
+          const timing = delayCheckerService.getOrderTiming({
+            pickedUpAt: refreshedOrder?.pickedUpAt || order.pickedUpAt,
+            estimatedDuration: refreshedOrder?.estimatedDuration || order.estimatedDuration,
+          });
+
+          activeOrder = {
+            id: order.id,
+            trackingNumber: order.id.substring(0, 8).toUpperCase(),
+            status: refreshedOrder?.status || order.status,
+            pickup: {
+              latitude: order.pickupLat,
+              longitude: order.pickupLng,
+            },
+            dropoff: {
+              latitude: order.dropLat,
+              longitude: order.dropLng,
+            },
+            payout: order.payoutAmount,
+            priority: order.priority || 'NORMAL',
+            estimatedDuration: refreshedOrder?.estimatedDuration || order.estimatedDuration,
+            pickedUpAt: order.pickedUpAt?.toISOString(),
+            assignedAt: order.assignedAt?.toISOString(),
+            timing,
+            partner: {
+              name: order.partner.user.name,
+              companyName: order.partner.companyName,
+              phone: order.partner.user.phone,
+            },
+          };
+        }
+      }
 
       res.json({
         todayOrders,
@@ -972,6 +1034,7 @@ export const agentController = {
         acceptanceRate: agent.acceptanceRate,
         rating: agent.rating,
         thisMonthOrders: thisMonthOrders.length,
+        activeOrder,
       });
     } catch (error) {
       next(error);

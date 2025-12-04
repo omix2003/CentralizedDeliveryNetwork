@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { MetricCard } from '@/components/shared/MetricCard';
@@ -15,6 +16,7 @@ import { locationTracker, Location } from '@/lib/services/locationTracker';
 import { Skeleton } from '@/components/ui/Skeleton';
 
 export default function AgentDashboard() {
+  const router = useRouter();
   const { data: session } = useSession();
   const [status, setStatus] = useState<'OFFLINE' | 'ONLINE' | 'ON_TRIP'>('OFFLINE');
   const [loading, setLoading] = useState(true);
@@ -289,6 +291,36 @@ export default function AgentDashboard() {
           />
         </div>
       ) : null}
+
+      {/* Active Order */}
+      {metrics?.activeOrder && (
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">Active Order</h2>
+              <p className="text-sm text-gray-500 mt-1">Currently assigned to you</p>
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => router.push(`/agent/orders/${metrics.activeOrder?.id}`)}
+            >
+              View Details
+            </Button>
+          </div>
+          <OrderCard
+            orderId={metrics.activeOrder.id}
+            trackingNumber={metrics.activeOrder.trackingNumber}
+            status={metrics.activeOrder.status}
+            from={{ latitude: metrics.activeOrder.pickup.latitude, longitude: metrics.activeOrder.pickup.longitude }}
+            to={{ latitude: metrics.activeOrder.dropoff.latitude, longitude: metrics.activeOrder.dropoff.longitude }}
+            customer={{ name: metrics.activeOrder.partner.name, phone: metrics.activeOrder.partner.phone }}
+            payout={metrics.activeOrder.payout}
+            onSelect={() => router.push(`/agent/orders/${metrics.activeOrder?.id}`)}
+            onTrack={() => router.push(`/agent/orders/${metrics.activeOrder?.id}`)}
+          />
+        </div>
+      )}
 
       {/* Available Orders */}
       {(status === 'ONLINE' || status === 'ON_TRIP') ? (
