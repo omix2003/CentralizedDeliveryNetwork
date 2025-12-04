@@ -6,6 +6,7 @@ import path from 'path';
 import { getRedisClient, isRedisConnected, testRedisConnection, getRedisStatus } from './lib/redis';
 import { errorHandler } from './middleware/error.middleware';
 import { initializeWebSocket } from './lib/websocket';
+import { prisma } from './lib/prisma';
 import authRoutes from './routes/auth.routes';
 import agentRoutes from './routes/agent.routes';
 import partnerRoutes from './routes/partner.routes';
@@ -305,6 +306,23 @@ app.use((req, res) => {
     ]
   });
 });
+
+// Check database connection and verify AgentRating table exists
+(async () => {
+  try {
+    // Simple check to verify AgentRating table exists
+    await prisma.$queryRaw`SELECT 1 FROM "AgentRating" LIMIT 1`;
+    console.log('✅ AgentRating table exists');
+  } catch (error: any) {
+    if (error?.code === 'P2021' || error?.message?.includes('does not exist')) {
+      console.error('❌ AgentRating table does not exist!');
+      console.error('⚠️  Please run: npx prisma migrate deploy');
+      console.error('⚠️  Or ensure migrations run during build process');
+    } else {
+      console.log('ℹ️  Could not verify AgentRating table (this is OK if migrations run during build)');
+    }
+  }
+})();
 
 // Initialize WebSocket server
 initializeWebSocket(httpServer);
