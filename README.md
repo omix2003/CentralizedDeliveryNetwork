@@ -1,6 +1,6 @@
 # 🚚 Centralized Delivery Network
 
-<div align="center">
+
 
 **A comprehensive delivery management platform connecting partners, agents, and administrators**
 
