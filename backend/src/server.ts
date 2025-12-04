@@ -307,7 +307,7 @@ app.use((req, res) => {
   });
 });
 
-// Check database connection and verify AgentRating table exists
+// Check database connection and verify AgentRating table exists, run migrations if needed
 (async () => {
   try {
     // Simple check to verify AgentRating table exists
@@ -319,11 +319,28 @@ app.use((req, res) => {
       console.error('⚠️  Attempting to run migrations automatically...');
       try {
         const { execSync } = await import('child_process');
-        execSync('npx prisma migrate deploy', { stdio: 'inherit' });
+        console.log('🔄 Running: npx prisma migrate deploy');
+        execSync('npx prisma migrate deploy', { 
+          stdio: 'inherit',
+          env: { ...process.env },
+          cwd: process.cwd()
+        });
         console.log('✅ Migrations applied successfully');
+        // Verify table exists now
+        try {
+          await prisma.$queryRaw`SELECT 1 FROM "AgentRating" LIMIT 1`;
+          console.log('✅ AgentRating table verified after migration');
+        } catch (verifyError) {
+          console.error('⚠️  Table still not found after migration attempt');
+        }
       } catch (migrateError: any) {
         console.error('❌ Failed to run migrations automatically:', migrateError?.message);
-        console.error('⚠️  Please ensure migrations run during build: npx prisma migrate deploy');
+        console.error('⚠️  Error details:', {
+          code: migrateError?.code,
+          signal: migrateError?.signal,
+          status: migrateError?.status,
+        });
+        console.error('⚠️  Please ensure migrations run during build or add to start command');
       }
     } else {
       console.log('ℹ️  Could not verify AgentRating table:', error?.message);
