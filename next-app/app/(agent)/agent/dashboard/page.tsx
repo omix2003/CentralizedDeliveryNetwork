@@ -298,7 +298,7 @@ export default function AgentDashboard() {
       ) : null}
 
       {/* Active Order */}
-      {metrics?.activeOrder ? (
+      {metrics?.activeOrder && (
         <div>
           <div className="flex items-center justify-between mb-4">
             <div>
