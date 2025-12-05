@@ -386,6 +386,7 @@ export default function AgentDashboard() {
             orderId={metrics.activeOrder.id}
             trackingNumber={metrics.activeOrder.trackingNumber}
             status={metrics.activeOrder.status}
+            isDelayed={metrics.activeOrder.timing?.isDelayed}
             from={{ latitude: metrics.activeOrder.pickup.latitude, longitude: metrics.activeOrder.pickup.longitude }}
             to={{ latitude: metrics.activeOrder.dropoff.latitude, longitude: metrics.activeOrder.dropoff.longitude }}
             customer={{ name: metrics.activeOrder.partner.name, phone: metrics.activeOrder.partner.phone }}
@@ -447,6 +448,7 @@ export default function AgentDashboard() {
                   orderId={order.id}
                   trackingNumber={order.trackingNumber}
                   status={order.status}
+                  isDelayed={order.status === 'DELAYED'}
                   from={{ latitude: order.pickup.latitude, longitude: order.pickup.longitude }}
                   to={{ latitude: order.dropoff.latitude, longitude: order.dropoff.longitude }}
                   customer={{ name: order.partner.name }}

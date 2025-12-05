@@ -860,8 +860,10 @@ export const agentController = {
         return res.status(404).json({ error: 'Agent profile not found' });
       }
 
+      console.log('[Agent Metrics] Fetching metrics for agent:', agentId);
+
       const now = new Date();
-      const todayStart = new Date(now.setHours(0, 0, 0, 0));
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
       const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
       const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
@@ -949,11 +951,30 @@ export const agentController = {
         : 0;
 
       // Active orders (orders that are assigned, picked up, or out for delivery)
+      // Build active statuses array, handling DELAYED enum availability
+      const activeStatuses: any[] = [
+        OrderStatus.ASSIGNED, 
+        OrderStatus.PICKED_UP, 
+        OrderStatus.OUT_FOR_DELIVERY
+      ];
+      
+      // Add DELAYED if available in enum, otherwise add as string
+      try {
+        if ((OrderStatus as any).DELAYED) {
+          activeStatuses.push((OrderStatus as any).DELAYED);
+        } else {
+          activeStatuses.push('DELAYED');
+        }
+      } catch (e) {
+        // If DELAYED not available, add as string literal
+        activeStatuses.push('DELAYED');
+      }
+      
       const activeOrders = await prisma.order.count({
         where: {
           agentId,
           status: {
-            in: [OrderStatus.ASSIGNED, OrderStatus.PICKED_UP, OrderStatus.OUT_FOR_DELIVERY, 'DELAYED' as OrderStatus],
+            in: activeStatuses,
           },
         },
       });
@@ -967,11 +988,28 @@ export const agentController = {
       
       // If no currentOrderId, check for any active order assigned to this agent
       if (!orderToCheck) {
+        const activeStatusesForQuery: any[] = [
+          OrderStatus.ASSIGNED, 
+          OrderStatus.PICKED_UP, 
+          OrderStatus.OUT_FOR_DELIVERY
+        ];
+        
+        // Add DELAYED if available
+        try {
+          if ((OrderStatus as any).DELAYED) {
+            activeStatusesForQuery.push((OrderStatus as any).DELAYED);
+          } else {
+            activeStatusesForQuery.push('DELAYED');
+          }
+        } catch (e) {
+          activeStatusesForQuery.push('DELAYED');
+        }
+        
         const activeOrderRecord = await prisma.order.findFirst({
           where: {
             agentId,
             status: {
-              in: [OrderStatus.ASSIGNED, OrderStatus.PICKED_UP, OrderStatus.OUT_FOR_DELIVERY, 'DELAYED' as OrderStatus],
+              in: activeStatusesForQuery,
             },
           },
           orderBy: {
@@ -1002,61 +1040,152 @@ export const agentController = {
             },
           });
 
-        const activeStatuses: OrderStatus[] = [
-          OrderStatus.ASSIGNED, 
-          OrderStatus.PICKED_UP, 
-          OrderStatus.OUT_FOR_DELIVERY, 
-          'DELAYED' as OrderStatus
-        ];
-        if (order && activeStatuses.includes(order.status) && order.partner && order.partner.user) {
-            // Check and update delayed status
-            const { delayCheckerService } = await import('../services/delay-checker.service');
-            await delayCheckerService.checkOrderDelay(order.id);
+          if (!order) {
+            console.warn('[Agent Metrics] Order not found:', orderToCheck);
+            activeOrder = null;
+          } else {
+            // Check if order status is active (including DELAYED)
+            const activeStatuses: any[] = [
+              OrderStatus.ASSIGNED, 
+              OrderStatus.PICKED_UP, 
+              OrderStatus.OUT_FOR_DELIVERY
+            ];
             
-            // Refresh order to get updated status
-            const refreshedOrder = await prisma.order.findUnique({
-              where: { id: order.id },
-            });
+            // Add DELAYED if available
+            try {
+              if ((OrderStatus as any).DELAYED) {
+                activeStatuses.push((OrderStatus as any).DELAYED);
+              } else {
+                activeStatuses.push('DELAYED');
+              }
+            } catch (e) {
+              activeStatuses.push('DELAYED');
+            }
+            
+            const isActiveStatus = activeStatuses.includes(order.status as any) || 
+              order.status === 'DELAYED' ||
+              (order.status as string) === 'DELAYED';
+            
+            if (isActiveStatus) {
+              // Check and update delayed status
+              let refreshedOrder = order;
+              let timing = null;
+              
+              try {
+                // Dynamically import delay checker service
+                let delayCheckerService;
+                try {
+                  const delayModule = await import('../services/delay-checker.service');
+                  delayCheckerService = delayModule.delayCheckerService;
+                } catch (importError: any) {
+                  console.warn('[Agent Metrics] Could not import delay-checker service:', importError?.message);
+                  delayCheckerService = null;
+                }
 
-            // Calculate timing information
-            const timing = delayCheckerService.getOrderTiming({
-              pickedUpAt: refreshedOrder?.pickedUpAt || order.pickedUpAt,
-              estimatedDuration: refreshedOrder?.estimatedDuration || order.estimatedDuration,
-            });
+                if (delayCheckerService) {
+                  try {
+                    await delayCheckerService.checkOrderDelay(order.id);
+                  } catch (checkError: any) {
+                    console.warn('[Agent Metrics] Error checking order delay:', checkError?.message);
+                    // Continue even if delay check fails
+                  }
+                }
+                
+                // Refresh order to get updated status (without relations to avoid type issues)
+                try {
+                  const refreshedOrderData = await prisma.order.findUnique({
+                    where: { id: order.id },
+                  });
+                  
+                  if (refreshedOrderData) {
+                    // Merge refreshed data with original order to keep partner relation
+                    refreshedOrder = {
+                      ...order,
+                      status: refreshedOrderData.status,
+                      pickedUpAt: refreshedOrderData.pickedUpAt,
+                      estimatedDuration: refreshedOrderData.estimatedDuration,
+                    };
+                  }
+                } catch (refreshError: any) {
+                  console.warn('[Agent Metrics] Error refreshing order:', refreshError?.message);
+                  // Use original order if refresh fails
+                }
 
-            activeOrder = {
-              id: order.id,
-              trackingNumber: order.id.substring(0, 8).toUpperCase(),
-              status: refreshedOrder?.status || order.status,
-              pickup: {
-                latitude: order.pickupLat,
-                longitude: order.pickupLng,
-              },
-              dropoff: {
-                latitude: order.dropLat,
-                longitude: order.dropLng,
-              },
-              payout: order.payoutAmount,
-              priority: order.priority || 'NORMAL',
-              estimatedDuration: refreshedOrder?.estimatedDuration || order.estimatedDuration,
-              pickedUpAt: order.pickedUpAt?.toISOString(),
-              assignedAt: order.assignedAt?.toISOString(),
-              timing,
-              partner: {
-                name: order.partner.user.name,
-                companyName: order.partner.companyName || '',
-                phone: order.partner.user.phone || '',
-              },
-            };
+                // Calculate timing information
+                if (delayCheckerService) {
+                  try {
+                    timing = delayCheckerService.getOrderTiming({
+                      pickedUpAt: refreshedOrder.pickedUpAt || null,
+                      estimatedDuration: refreshedOrder.estimatedDuration || null,
+                    });
+                  } catch (timingError: any) {
+                    console.warn('[Agent Metrics] Error calculating timing:', timingError?.message);
+                    timing = null;
+                  }
+                }
+              } catch (delayError: any) {
+                console.error('[Agent Metrics] Unexpected error in delay checker block:', delayError);
+                // Continue without timing if delay checker fails
+              }
+              
+              // Set default timing if not calculated
+              if (!timing) {
+                timing = {
+                  elapsedMinutes: null,
+                  remainingMinutes: null,
+                  isDelayed: false,
+                  elapsedTime: null,
+                  remainingTime: null,
+                };
+              }
+
+              // Safely access partner data with null checks
+              const partnerName = order.partner?.user?.name || 'Unknown Partner';
+              const partnerCompanyName = order.partner?.companyName || '';
+              const partnerPhone = order.partner?.user?.phone || '';
+
+              activeOrder = {
+                id: order.id,
+                trackingNumber: order.id.substring(0, 8).toUpperCase(),
+                status: refreshedOrder?.status || order.status,
+                pickup: {
+                  latitude: order.pickupLat,
+                  longitude: order.pickupLng,
+                },
+                dropoff: {
+                  latitude: order.dropLat,
+                  longitude: order.dropLng,
+                },
+                payout: order.payoutAmount,
+                priority: order.priority || 'NORMAL',
+                estimatedDuration: refreshedOrder?.estimatedDuration || order.estimatedDuration,
+                pickedUpAt: order.pickedUpAt?.toISOString(),
+                assignedAt: order.assignedAt?.toISOString(),
+                timing,
+                partner: {
+                  name: partnerName,
+                  companyName: partnerCompanyName,
+                  phone: partnerPhone,
+                },
+              };
+            } else {
+              // Order exists but is not in an active status
+              activeOrder = null;
+            }
           }
         } catch (error: any) {
           console.error('[Agent Metrics] Error fetching active order:', error);
+          console.error('[Agent Metrics] Error details:', {
+            message: error?.message,
+            stack: error?.stack,
+            orderId: orderToCheck,
+          });
           // Continue without active order if there's an error
           activeOrder = null;
         }
       }
 
-      res.json({
+      const response = {
         todayOrders,
         yesterdayOrders,
         ordersChange: Math.round(ordersChange),
@@ -1064,15 +1193,36 @@ export const agentController = {
         lastMonthEarnings,
         earningsChange: Math.round(earningsChange),
         activeOrders,
-        completedOrders: agent.completedOrders,
-        totalOrders: agent.totalOrders,
+        completedOrders: agent.completedOrders || 0,
+        totalOrders: agent.totalOrders || 0,
         cancelledOrders: agent.cancelledOrders || 0,
-        acceptanceRate: agent.acceptanceRate,
-        rating: agent.rating,
+        acceptanceRate: agent.acceptanceRate || 0,
+        rating: agent.rating || 0,
         thisMonthOrders: thisMonthOrders.length,
         activeOrder,
+      };
+
+      console.log('[Agent Metrics] Successfully returning metrics:', {
+        todayOrders: response.todayOrders,
+        activeOrders: response.activeOrders,
+        hasActiveOrder: !!response.activeOrder,
       });
-    } catch (error) {
+
+      res.json(response);
+    } catch (error: any) {
+      console.error('[Agent Metrics] Error in getMetrics:', error);
+      console.error('[Agent Metrics] Error details:', {
+        message: error?.message,
+        stack: error?.stack,
+        name: error?.name,
+        code: error?.code,
+      });
+      
+      // Return a more detailed error response
+      if (error?.code === 'P2002' || error?.message?.includes('Unique constraint')) {
+        return res.status(400).json({ error: 'Database constraint violation' });
+      }
+      
       next(error);
     }
   },

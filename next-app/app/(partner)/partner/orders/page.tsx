@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { StatusBadge } from '@/components/ui/Badge';
 import { partnerApi, Order } from '@/lib/api/partner';
 import { AddressDisplay } from '@/components/orders/AddressDisplay';
+import { DelayedBadge } from '@/components/orders/DelayedBadge';
 import { Package, Plus, RefreshCw, Filter, Search, MapPin, DollarSign, Clock, AlertCircle } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils/currency';
 import { useRouter } from 'next/navigation';
@@ -150,7 +151,19 @@ export default function PartnerOrdersPage() {
         </Card>
       ) : (
         <div className="grid gap-4">
-          {filteredOrders.map((order) => (
+          {filteredOrders.map((order) => {
+            // Check if delivered order was delayed (exceeded estimated duration)
+            const isDeliveredAndDelayed = order.status === 'DELIVERED' && 
+              order.pickedUpAt && 
+              order.deliveredAt && 
+              order.estimatedDuration && (() => {
+                const pickedUpTime = new Date(order.pickedUpAt).getTime();
+                const deliveredTime = new Date(order.deliveredAt).getTime();
+                const actualDurationMinutes = Math.floor((deliveredTime - pickedUpTime) / 60000);
+                return actualDurationMinutes > order.estimatedDuration;
+              })();
+
+            return (
             <Card key={order.id} className="hover:shadow-md transition-shadow">
               <CardContent className="p-5">
                 <div className="flex items-center justify-between mb-4">
@@ -160,6 +173,11 @@ export default function PartnerOrdersPage() {
                         #{order.trackingNumber}
                       </h3>
                       <StatusBadge status={order.status} />
+                      {(order.status === 'DELAYED' || order.status?.toUpperCase() === 'DELAYED') && <DelayedBadge />}
+                      {order.timing?.isDelayed && order.status !== 'DELAYED' && order.status !== 'DELIVERED' && (
+                        <DelayedBadge />
+                      )}
+                      {isDeliveredAndDelayed && <DelayedBadge />}
                     </div>
                     <p className="text-sm text-gray-500">
                       Created: {formatDate(order.createdAt)}
@@ -238,7 +256,8 @@ export default function PartnerOrdersPage() {
                 </div>
               </CardContent>
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

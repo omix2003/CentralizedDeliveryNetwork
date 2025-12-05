@@ -9,6 +9,7 @@ import { adminApi } from '@/lib/api/admin';
 import { format } from 'date-fns';
 import { reverseGeocode } from '@/lib/utils/geocoding';
 import { formatCurrency } from '@/lib/utils/currency';
+import { DelayedBadge } from '@/components/orders/DelayedBadge';
 
 export default function OrderDetailsPage() {
   const router = useRouter();
@@ -85,6 +86,8 @@ export default function OrderDetailsPage() {
         return 'bg-purple-100 text-purple-800';
       case 'OUT_FOR_DELIVERY':
         return 'bg-indigo-100 text-indigo-800';
+      case 'DELAYED':
+        return 'bg-orange-100 text-orange-800';
       case 'DELIVERED':
         return 'bg-green-100 text-green-800';
       case 'CANCELLED':
@@ -138,9 +141,12 @@ export default function OrderDetailsPage() {
             <CardContent className="space-y-4">
               <div>
                 <p className="text-sm font-medium text-gray-700">Status</p>
-                <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium mt-1 ${getStatusColor(order.status)}`}>
-                  {order.status.replace('_', ' ')}
-                </span>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(order.status)}`}>
+                    {order.status.replace('_', ' ')}
+                  </span>
+                  {(order.status === 'DELAYED' || order.status?.toUpperCase() === 'DELAYED') && <DelayedBadge />}
+                </div>
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-700">Payout Amount</p>

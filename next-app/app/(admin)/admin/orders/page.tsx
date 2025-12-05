@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation';
 import { adminApi, Order } from '@/lib/api/admin';
 import { format } from 'date-fns';
 import { formatCurrency } from '@/lib/utils/currency';
+import { DelayedBadge } from '@/components/orders/DelayedBadge';
 
 export default function OrdersManagementPage() {
   const router = useRouter();
@@ -73,6 +74,8 @@ export default function OrdersManagementPage() {
         return 'bg-purple-100 text-purple-800';
       case 'OUT_FOR_DELIVERY':
         return 'bg-indigo-100 text-indigo-800';
+      case 'DELAYED':
+        return 'bg-orange-100 text-orange-800';
       case 'DELIVERED':
         return 'bg-green-100 text-green-800';
       case 'CANCELLED':
@@ -180,9 +183,12 @@ export default function OrdersManagementPage() {
                           {formatCurrency(order.payoutAmount)}
                         </td>
                         <td className="py-3 px-4">
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
-                            {order.status.replace('_', ' ')}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
+                              {order.status.replace('_', ' ')}
+                            </span>
+                            {(order.status === 'DELAYED' || order.status?.toUpperCase() === 'DELAYED') && <DelayedBadge />}
+                          </div>
                         </td>
                         <td className="py-3 px-4 text-gray-600 text-sm">
                           {format(new Date(order.createdAt), 'MMM d, yyyy HH:mm')}

@@ -7,11 +7,13 @@ import { MapPin, Phone, Mail, Truck, ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AddressDisplay } from './AddressDisplay';
 import { formatCurrency } from '@/lib/utils/currency';
+import { DelayedBadge } from './DelayedBadge';
 
 interface OrderCardProps {
   orderId: string;
   trackingNumber?: string;
   status: string;
+  isDelayed?: boolean; // Optional flag to indicate if order is delayed
   from: {
     address?: string;
     latitude?: number;
@@ -53,6 +55,7 @@ export function OrderCard({
   orderId,
   trackingNumber,
   status,
+  isDelayed,
   from,
   to,
   customer,
@@ -83,11 +86,16 @@ export function OrderCard({
         {/* Header */}
         <div className="flex items-start justify-between mb-4">
           <div className="flex-1">
-            <div className="flex items-center gap-3 mb-3">
+            <div className="flex items-center gap-3 mb-3 flex-wrap">
               <h4 className="text-lg font-semibold text-gray-900">
                 {trackingNumber ? `#${trackingNumber}` : `Order #${orderId}`}
               </h4>
-              <StatusBadge status={status} />
+              <div className="flex items-center gap-2">
+                <StatusBadge status={status} />
+                {(status === 'DELAYED' || status?.toUpperCase() === 'DELAYED' || isDelayed) && (
+                  <DelayedBadge />
+                )}
+              </div>
             </div>
             {progress !== undefined && (
               <ProgressBar value={progress} variant="info" size="sm" />

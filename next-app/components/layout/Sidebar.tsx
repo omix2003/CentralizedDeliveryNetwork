@@ -92,7 +92,9 @@ export function Sidebar({ role, userEmail, userName, isOpen = true, onClose, onT
       <div
         className={cn(
           'bg-white border-r border-gray-100 flex flex-col fixed md:static z-30 transition-all duration-300 ease-in-out overflow-hidden group',
-          isOpen ? 'translate-x-0 w-16 md:w-16 top-0 md:top-0 h-screen md:hover:w-64' : '-translate-x-full md:translate-x-0 md:w-0 md:overflow-hidden h-screen md:h-screen'
+          isOpen 
+            ? 'translate-x-0 w-16 md:w-16 top-0 md:top-0 h-screen md:hover:w-64' 
+            : '-translate-x-full md:translate-x-0 md:w-16 md:overflow-hidden h-screen md:h-screen'
         )}
       >
         {/* Logo/Brand - Fixed header */}
@@ -123,7 +125,7 @@ export function Sidebar({ role, userEmail, userName, isOpen = true, onClose, onT
         </div>
 
       {/* Navigation - Scrollable area (in front of header) */}
-      <nav className={cn('flex-1 overflow-y-auto sidebar-scrollbar min-h-0 px-3 pt-3 pb-0 pr-2 relative z-20 bg-white group', !isOpen && 'md:hidden')}>
+      <nav className={cn('flex-1 overflow-y-auto sidebar-scrollbar min-h-0 px-3 pt-3 pb-0 pr-2 relative z-20 bg-white group', !isOpen && 'hidden md:flex')}>
         <div className="space-y-1">
         {navItems.map((item) => {
           const Icon = item.icon;

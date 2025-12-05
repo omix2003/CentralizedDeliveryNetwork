@@ -255,6 +255,17 @@ export default function OrderDetailsPage() {
     );
   }
 
+  // Check if delivered order was delayed (exceeded estimated duration)
+  const isDeliveredAndDelayed = order.status === 'DELIVERED' && 
+    order.pickedUpAt && 
+    order.deliveredAt && 
+    order.estimatedDuration && (() => {
+      const pickedUpTime = new Date(order.pickedUpAt).getTime();
+      const deliveredTime = new Date(order.deliveredAt).getTime();
+      const actualDurationMinutes = Math.floor((deliveredTime - pickedUpTime) / 60000);
+      return actualDurationMinutes > order.estimatedDuration;
+    })();
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -265,12 +276,18 @@ export default function OrderDetailsPage() {
             Back
           </Button>
           <div>
-            <div className="flex items-center gap-3 mb-2">
+            <div className="flex items-center gap-3 mb-2 flex-wrap">
               <h1 className="text-3xl font-bold text-gray-900">
                 Order #{order.trackingNumber}
               </h1>
-              <StatusBadge status={order.status} />
-              {order.status === 'DELAYED' && <DelayedBadge />}
+              <div className="flex items-center gap-2">
+                <StatusBadge status={order.status} />
+                {(order.status === 'DELAYED' || order.status?.toUpperCase() === 'DELAYED') && <DelayedBadge />}
+                {order.timing?.isDelayed && order.status !== 'DELAYED' && order.status !== 'DELIVERED' && (
+                  <DelayedBadge />
+                )}
+                {isDeliveredAndDelayed && <DelayedBadge />}
+              </div>
             </div>
             <p className="text-gray-600">Tracking number: {order.trackingNumber}</p>
           </div>
@@ -333,6 +350,8 @@ export default function OrderDetailsPage() {
                 <OrderTimer
                   pickedUpAt={order.pickedUpAt}
                   estimatedDuration={order.estimatedDuration}
+                  status={order.status}
+                  deliveredAt={order.deliveredAt}
                   timing={order.timing}
                 />
               </CardContent>
@@ -468,26 +487,7 @@ export default function OrderDetailsPage() {
             </CardContent>
           </Card>
 
-                  {/* Order Timer */}
-                  {order.pickedUpAt && order.estimatedDuration && (
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                          <Clock className="h-5 w-5" />
-                          Delivery Timer
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <OrderTimer
-                          pickedUpAt={order.pickedUpAt}
-                          estimatedDuration={order.estimatedDuration}
-                          timing={order.timing}
-                        />
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  {/* Order Information */}
+          {/* Order Information */}
                   <Card>
             <CardHeader>
               <CardTitle>Order Information</CardTitle>
