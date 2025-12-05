@@ -644,11 +644,33 @@ export const agentController = {
 
       const orderId = req.params.id;
 
+      // Using select instead of include to avoid accessing columns that may not exist yet
       const order = await prisma.order.findUnique({
         where: { id: orderId },
-        include: {
+        select: {
+          id: true,
+          status: true,
+          agentId: true,
+          pickupLat: true,
+          pickupLng: true,
+          dropLat: true,
+          dropLng: true,
+          payoutAmount: true,
+          priority: true,
+          estimatedDuration: true,
+          actualDuration: true,
+          createdAt: true,
+          assignedAt: true,
+          pickedUpAt: true,
+          deliveredAt: true,
+          cancelledAt: true,
+          cancellationReason: true,
+          barcode: true,
+          qrCode: true,
           partner: {
-            include: {
+            select: {
+              id: true,
+              companyName: true,
               user: {
                 select: {
                   name: true,
