@@ -287,14 +287,26 @@ export const agentController = {
       // In a real implementation, we'd use Redis GEO to find nearby orders
       
       // Get all orders that are searching for an agent
+      // Using select instead of include to avoid accessing columns that may not exist yet
       const orders = await prisma.order.findMany({
         where: {
           status: 'SEARCHING_AGENT',
           agentId: null, // Not yet assigned
         },
-        include: {
+        select: {
+          id: true,
+          status: true,
+          pickupLat: true,
+          pickupLng: true,
+          dropLat: true,
+          dropLng: true,
+          payoutAmount: true,
+          priority: true,
+          estimatedDuration: true,
+          createdAt: true,
           partner: {
-            include: {
+            select: {
+              companyName: true,
               user: {
                 select: {
                   name: true,
