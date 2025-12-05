@@ -159,11 +159,31 @@ export const partnerController = {
         dropLat,
         dropLng,
         payoutAmount,
+        orderAmount, // What partner charges customer
+        orderType = 'ON_DEMAND', // ON_DEMAND or B2B_BULK
+        commissionRate, // Optional custom commission rate
         priority = 'NORMAL',
         estimatedDuration,
       } = req.body;
 
-      // Create order
+      // Validate commission rate based on order type
+      let finalCommissionRate = commissionRate;
+      if (!finalCommissionRate) {
+        // Default commission rates
+        finalCommissionRate = orderType === 'B2B_BULK' ? 10 : 20; // 10% for B2B, 20% for ON_DEMAND
+      } else {
+        // Validate commission rate is within allowed range
+        if (orderType === 'B2B_BULK') {
+          finalCommissionRate = Math.max(8, Math.min(12, finalCommissionRate)); // 8-12% for B2B
+        } else {
+          finalCommissionRate = Math.max(15, Math.min(30, finalCommissionRate)); // 15-30% for ON_DEMAND
+        }
+      }
+
+      // Calculate order amount if not provided (default: payoutAmount * 1.25 for 25% partner markup)
+      const finalOrderAmount = orderAmount || (payoutAmount * 1.25);
+
+      // Create order first (barcode/QR will be generated after)
       const order = await prisma.order.create({
         data: {
           partnerId,
@@ -172,6 +192,9 @@ export const partnerController = {
           dropLat,
           dropLng,
           payoutAmount,
+          orderAmount: finalOrderAmount,
+          orderType: orderType as 'ON_DEMAND' | 'B2B_BULK',
+          commissionRate: finalCommissionRate,
           priority,
           estimatedDuration,
           status: 'SEARCHING_AGENT',
@@ -190,12 +213,33 @@ export const partnerController = {
         },
       });
 
+      // Generate and assign barcode/QR code after order creation
+      const { barcodeService } = await import('../services/barcode.service');
+      await barcodeService.assignBarcodeToOrder(order.id);
+
+      // Fetch updated order with barcode/QR
+      const orderWithBarcode = await prisma.order.findUnique({
+        where: { id: order.id },
+        include: {
+          partner: {
+            include: {
+              user: {
+                select: {
+                  name: true,
+                  id: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
       // Log order creation event
       eventService.logOrderEvent(
         EventType.ORDER_CREATED,
-        order.id,
+        orderWithBarcode!.id,
         ActorType.PARTNER,
-        order.partner.user.id,
+        orderWithBarcode!.partner.user.id,
         {
           partnerId,
           payoutAmount,
@@ -208,19 +252,20 @@ export const partnerController = {
       // This will find nearby agents and offer the order to them
       // Assignment happens when an agent accepts the order
       const { assignOrder } = await import('../services/assignment.service');
-      console.log(`[Partner] Triggering assignment for order ${order.id} at (${order.pickupLat}, ${order.pickupLng})`);
+      const finalOrder = orderWithBarcode || order;
+      console.log(`[Partner] Triggering assignment for order ${finalOrder.id} at (${finalOrder.pickupLat}, ${finalOrder.pickupLng})`);
       assignOrder({
-        orderId: order.id,
-        pickupLat: order.pickupLat,
-        pickupLng: order.pickupLng,
-        payoutAmount: order.payoutAmount,
-        priority: (order.priority as 'HIGH' | 'NORMAL' | 'LOW') || 'NORMAL',
+        orderId: finalOrder.id,
+        pickupLat: finalOrder.pickupLat,
+        pickupLng: finalOrder.pickupLng,
+        payoutAmount: finalOrder.payoutAmount,
+        priority: (finalOrder.priority as 'HIGH' | 'NORMAL' | 'LOW') || 'NORMAL',
         maxRadius: 5000, // 5km
         maxAgentsToOffer: 5,
         offerTimeout: 30, // 30 seconds
       })
         .then((result) => {
-          console.log(`[Partner] Assignment result for order ${order.id}:`, {
+          console.log(`[Partner] Assignment result for order ${finalOrder.id}:`, {
             success: result.success,
             agentsOffered: result.agentsOffered,
             assigned: result.assigned,
@@ -236,16 +281,16 @@ export const partnerController = {
       await notifyPartner(
         partnerId,
         'ORDER_CREATED',
-        order.id,
-        order.status,
+        finalOrder.id,
+        finalOrder.status,
         {
-          trackingNumber: order.id.substring(0, 8).toUpperCase(),
-          payout: order.payoutAmount,
+          trackingNumber: finalOrder.id.substring(0, 8).toUpperCase(),
+          payout: finalOrder.payoutAmount,
         }
       );
 
       res.status(201).json({
-        id: order.id,
+        id: finalOrder.id,
         trackingNumber: order.id.substring(0, 8).toUpperCase(),
         status: order.status,
         pickup: {
@@ -469,6 +514,8 @@ export const partnerController = {
         cancellationReason: order.cancellationReason,
         createdAt: order.createdAt.toISOString(),
         updatedAt: order.updatedAt.toISOString(),
+        barcode: order.barcode || null,
+        qrCode: order.qrCode || null,
         timing: {
           elapsedMinutes: timing.elapsedMinutes,
           remainingMinutes: timing.remainingMinutes,
@@ -509,11 +556,31 @@ export const partnerController = {
         dropLat,
         dropLng,
         payoutAmount,
+        orderAmount, // What partner charges customer
+        orderType = 'ON_DEMAND', // ON_DEMAND or B2B_BULK
+        commissionRate, // Optional custom commission rate
         priority = 'NORMAL',
         estimatedDuration,
       } = req.body;
 
-      // Create order
+      // Validate commission rate based on order type
+      let finalCommissionRate = commissionRate;
+      if (!finalCommissionRate) {
+        // Default commission rates
+        finalCommissionRate = orderType === 'B2B_BULK' ? 10 : 20; // 10% for B2B, 20% for ON_DEMAND
+      } else {
+        // Validate commission rate is within allowed range
+        if (orderType === 'B2B_BULK') {
+          finalCommissionRate = Math.max(8, Math.min(12, finalCommissionRate)); // 8-12% for B2B
+        } else {
+          finalCommissionRate = Math.max(15, Math.min(30, finalCommissionRate)); // 15-30% for ON_DEMAND
+        }
+      }
+
+      // Calculate order amount if not provided (default: payoutAmount * 1.25 for 25% partner markup)
+      const finalOrderAmount = orderAmount || (payoutAmount * 1.25);
+
+      // Create order first
       const order = await prisma.order.create({
         data: {
           partnerId: partner.partnerId,
@@ -522,10 +589,22 @@ export const partnerController = {
           dropLat,
           dropLng,
           payoutAmount,
+          orderAmount: finalOrderAmount,
+          orderType: orderType as 'ON_DEMAND' | 'B2B_BULK',
+          commissionRate: finalCommissionRate,
           priority,
           estimatedDuration,
           status: 'SEARCHING_AGENT',
         },
+      });
+
+      // Generate and assign barcode/QR code after order creation
+      const { barcodeService } = await import('../services/barcode.service');
+      await barcodeService.assignBarcodeToOrder(order.id);
+
+      // Fetch updated order with barcode/QR
+      const orderWithBarcode = await prisma.order.findUnique({
+        where: { id: order.id },
       });
 
       // Notify partner via webhook

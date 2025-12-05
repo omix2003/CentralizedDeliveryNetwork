@@ -31,6 +31,8 @@ import { Star } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils/currency';
 import { OrderTimer } from '@/components/orders/OrderTimer';
 import { DelayedBadge } from '@/components/orders/DelayedBadge';
+import { OrderBarcode } from '@/components/orders/OrderBarcode';
+import { OrderQRCode } from '@/components/orders/OrderQRCode';
 
 // Lazy load Google Places Autocomplete
 const GooglePlacesAutocomplete = dynamic(
@@ -715,6 +717,22 @@ export default function OrderDetailsPage() {
               </Button>
             </CardContent>
           </Card>
+
+          {/* Barcode & QR Code */}
+          {(order as any).barcode && (
+            <OrderBarcode
+              barcode={(order as any).barcode}
+              orderId={order.id}
+              trackingNumber={order.trackingNumber}
+            />
+          )}
+          {(order as any).qrCode && (
+            <OrderQRCode
+              qrCode={(order as any).qrCode}
+              orderId={order.id}
+              trackingNumber={order.trackingNumber}
+            />
+          )}
 
           {/* Support Ticket Form */}
           <Card>

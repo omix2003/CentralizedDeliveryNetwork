@@ -89,6 +89,41 @@ export interface Order {
   agent?: Agent;
 }
 
+export interface WalletTransaction {
+  id: string;
+  amount: number;
+  type: string;
+  description: string | null;
+  balanceBefore: number;
+  balanceAfter: number;
+  status: string;
+  createdAt: string;
+  order?: { id: string; status: string };
+}
+
+export interface WalletPayout {
+  id: string;
+  agentId: string;
+  amount: number;
+  periodStart: string;
+  periodEnd: string;
+  status: string;
+  paymentMethod: string | null;
+  bankAccount: string | null;
+  upiId: string | null;
+  transactionId: string | null;
+  processedAt: string | null;
+  createdAt: string;
+  agent?: {
+    id: string;
+    user: {
+      name: string;
+      email: string;
+      phone: string;
+    };
+  };
+}
+
 export const adminApi = {
   // Metrics
   async getOverview(): Promise<AdminMetrics> {
@@ -319,6 +354,75 @@ export const adminApi = {
     fees?: any;
   }) {
     const response = await apiClient.put('/admin/settings', settings);
+    return response.data;
+  },
+
+  // Wallet & Payouts
+  async getAdminWallet(): Promise<{
+    balance: number;
+    totalEarned: number;
+    totalPaidOut: number;
+    totalDeposited: number;
+  }> {
+    const response = await apiClient.get('/admin/wallet');
+    return response.data;
+  },
+
+  async getAdminWalletTransactions(page: number = 1, limit: number = 20): Promise<{
+    transactions: WalletTransaction[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }> {
+    const response = await apiClient.get('/admin/wallet/transactions', {
+      params: { page, limit },
+    });
+    return response.data;
+  },
+
+  async getAllPayouts(status?: string, page: number = 1, limit: number = 20): Promise<{
+    payouts: WalletPayout[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }> {
+    const response = await apiClient.get('/admin/payouts', {
+      params: { status, page, limit },
+    });
+    return response.data;
+  },
+
+  async getAgentsReadyForPayout(): Promise<{
+    agents: Array<{
+      agentId: string;
+      balance: number;
+      nextPayoutDate: string | null;
+    }>;
+  }> {
+    const response = await apiClient.get('/admin/payouts/ready');
+    return response.data;
+  },
+
+  async processPayout(data: {
+    agentId: string;
+    paymentMethod: 'BANK_TRANSFER' | 'UPI' | 'MOBILE_MONEY';
+    bankAccount?: string;
+    upiId?: string;
+    weekStart?: string;
+  }): Promise<{ message: string; payout: WalletPayout }> {
+    const response = await apiClient.post('/admin/payouts/process', data);
+    return response.data;
+  },
+
+  async processAllPayouts(paymentMethod: 'BANK_TRANSFER' | 'UPI' | 'MOBILE_MONEY' = 'BANK_TRANSFER'): Promise<{
+    message: string;
+    results: Array<{ success: boolean; agentId: string; payoutId?: string; error?: string }>;
+    totalProcessed: number;
+    totalFailed: number;
+  }> {
+    const response = await apiClient.post('/admin/payouts/process-all', { paymentMethod });
     return response.data;
   },
 };

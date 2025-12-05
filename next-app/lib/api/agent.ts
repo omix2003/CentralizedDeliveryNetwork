@@ -124,6 +124,110 @@ export const agentApi = {
     return response.data;
   },
 
+  // Scanning endpoints
+  scanBarcode: async (barcode: string) => {
+    const response = await apiClient.post('/agent/scan/barcode', { barcode });
+    return response.data;
+  },
+
+  scanQRCode: async (qrCode: string) => {
+    const response = await apiClient.post('/agent/scan/qr', { qrCode });
+    return response.data;
+  },
+
+  // Delivery verification endpoints
+  generateVerification: async (orderId: string) => {
+    const response = await apiClient.post(`/agent/orders/${orderId}/generate-verification`);
+    return response.data;
+  },
+
+  verifyWithOTP: async (orderId: string, otp: string) => {
+    const response = await apiClient.post(`/agent/orders/${orderId}/verify-otp`, { otp });
+    return response.data;
+  },
+
+  verifyWithQR: async (orderId: string, qrCode: string) => {
+    const response = await apiClient.post(`/agent/orders/${orderId}/verify-qr`, { qrCode });
+    return response.data;
+  },
+
+  getVerification: async (orderId: string) => {
+    const response = await apiClient.get(`/agent/orders/${orderId}/verification`);
+    return response.data;
+  },
+
+  // Payment endpoints
+  getPayments: async (params?: { page?: number; limit?: number }) => {
+    const response = await apiClient.get('/agent/payments', { params });
+    return response.data;
+  },
+
+  getPaymentSummary: async () => {
+    const response = await apiClient.get('/agent/payments/summary');
+    return response.data;
+  },
+
+  getPayrolls: async (params?: { page?: number; limit?: number }) => {
+    const response = await apiClient.get('/agent/payrolls', { params });
+    return response.data;
+  },
+
+  calculatePayroll: async (data: {
+    periodStart: string;
+    periodEnd: string;
+    periodType: 'DAILY' | 'WEEKLY' | 'MONTHLY';
+  }) => {
+    const response = await apiClient.post('/agent/payrolls/calculate', data);
+    return response.data;
+  },
+
+  // Schedule endpoints
+  setSchedule: async (data: {
+    date: string;
+    startTime?: string;
+    endTime?: string;
+    isAvailable?: boolean;
+    notes?: string;
+  }) => {
+    const response = await apiClient.post('/agent/schedule', data);
+    return response.data;
+  },
+
+  getSchedule: async (params: { startDate: string; endDate: string }) => {
+    const response = await apiClient.get('/agent/schedule', { params });
+    return response.data;
+  },
+
+  getCalendar: async (params: { viewType: 'MONTHLY' | 'WEEKLY'; startDate: string }) => {
+    const response = await apiClient.get('/agent/calendar', { params });
+    return response.data;
+  },
+
+  checkAvailability: async (params: { date: string; time?: string }) => {
+    const response = await apiClient.get('/agent/schedule/availability', { params });
+    return response.data;
+  },
+
+  // Wallet & Payouts
+  getWallet: async () => {
+    const response = await apiClient.get('/agent/wallet');
+    return response.data;
+  },
+
+  getWalletTransactions: async (page: number = 1, limit: number = 20) => {
+    const response = await apiClient.get('/agent/wallet/transactions', {
+      params: { page, limit },
+    });
+    return response.data;
+  },
+
+  getPayouts: async (page: number = 1, limit: number = 20) => {
+    const response = await apiClient.get('/agent/payouts', {
+      params: { page, limit },
+    });
+    return response.data;
+  },
+
   getSupportTickets: async (params?: {
     status?: string;
     page?: number;
@@ -236,6 +340,8 @@ export interface AgentOrder {
   cancelledAt?: string;
   cancellationReason?: string;
   timing?: OrderTiming;
+  barcode?: string;
+  qrCode?: string;
   partner: {
     id: string;
     name: string;
@@ -243,5 +349,88 @@ export interface AgentOrder {
     phone: string;
     email: string;
   };
+}
+
+export interface Payment {
+  id: string;
+  agentId: string;
+  orderId: string;
+  amount: number;
+  paymentType: string;
+  status: 'PENDING' | 'PROCESSED' | 'FAILED';
+  processedAt?: string;
+  paymentMethod?: string;
+  transactionId?: string;
+  notes?: string;
+  createdAt: string;
+  order?: {
+    id: string;
+    status: string;
+    deliveredAt?: string;
+  };
+}
+
+export interface Payroll {
+  id: string;
+  agentId: string;
+  periodStart: string;
+  periodEnd: string;
+  periodType: 'DAILY' | 'WEEKLY' | 'MONTHLY';
+  totalEarnings: number;
+  totalOrders: number;
+  basePay: number;
+  bonuses: number;
+  deductions: number;
+  netPay: number;
+  status: 'PENDING' | 'PROCESSED' | 'PAID' | 'FAILED';
+  processedAt?: string;
+  paidAt?: string;
+  paymentMethod?: string;
+  transactionId?: string;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface AgentSchedule {
+  id: string;
+  agentId: string;
+  date: string;
+  startTime?: string;
+  endTime?: string;
+  isAvailable: boolean;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CalendarData {
+  schedules: AgentSchedule[];
+  deliveries: Array<{
+    id: string;
+    deliveredAt: string;
+    payoutAmount: number;
+    status: string;
+  }>;
+  period: {
+    start: string;
+    end: string;
+    type: 'MONTHLY' | 'WEEKLY';
+  };
+}
+
+export interface VerificationData {
+  hasOtp: boolean;
+  hasQrCode: boolean;
+  expiresAt?: string;
+  verifiedAt?: string;
+  verificationMethod?: string;
+  isExpired: boolean;
+}
+
+export interface PaymentSummary {
+  today: { amount: number; count: number };
+  week: { amount: number; count: number };
+  month: { amount: number; count: number };
+  pending: { amount: number; count: number };
 }
 

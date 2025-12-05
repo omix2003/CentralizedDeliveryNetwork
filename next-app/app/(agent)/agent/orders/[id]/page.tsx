@@ -27,6 +27,9 @@ import { reverseGeocode } from '@/lib/utils/geocoding';
 import { SupportTicketForm } from '@/components/support/SupportTicketForm';
 import { OrderTimer } from '@/components/orders/OrderTimer';
 import { DelayedBadge } from '@/components/orders/DelayedBadge';
+import { DeliveryVerification } from '@/components/verification/DeliveryVerification';
+import { BarcodeScanner } from '@/components/scanning/BarcodeScanner';
+import { QRScanner } from '@/components/scanning/QRScanner';
 
 // Dynamically import map component to avoid SSR issues
 const OrderTrackingMap = dynamic(() => import('@/components/maps/OrderTrackingMap').then(mod => ({ default: mod.OrderTrackingMap })), {
@@ -47,6 +50,10 @@ export default function AgentOrderDetailsPage() {
   const [pickupAddress, setPickupAddress] = useState<string | null>(null);
   const [dropoffAddress, setDropoffAddress] = useState<string | null>(null);
   const [addressesLoading, setAddressesLoading] = useState(false);
+  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
+  const [barcodeScanError, setBarcodeScanError] = useState<string | null>(null);
+  const [showQRScanner, setShowQRScanner] = useState(false);
+  const [qrScanError, setQrScanError] = useState<string | null>(null);
 
   useEffect(() => {
     loadOrder();
@@ -81,6 +88,20 @@ export default function AgentOrderDetailsPage() {
   const handleStatusUpdate = async (status: 'PICKED_UP' | 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'CANCELLED', cancellationReason?: string) => {
     if (!order) return;
 
+    // For PICKED_UP status, require barcode scanning
+    if (status === 'PICKED_UP' && order.status === 'ASSIGNED') {
+      setShowBarcodeScanner(true);
+      setBarcodeScanError(null);
+      return;
+    }
+
+    // For DELIVERED status, require QR code scanning
+    if (status === 'DELIVERED' && (order.status === 'OUT_FOR_DELIVERY' || order.status === 'DELAYED')) {
+      setShowQRScanner(true);
+      setQrScanError(null);
+      return;
+    }
+
     if (status === 'CANCELLED' && !cancellationReason) {
       const reason = window.prompt('Please provide a reason for cancellation:');
       if (!reason) return;
@@ -99,6 +120,68 @@ export default function AgentOrderDetailsPage() {
     } finally {
       setUpdating(false);
     }
+  };
+
+  const handleBarcodeScanSuccess = async (scannedOrder: any) => {
+    if (!order) return;
+
+    // Verify the scanned order matches the current order
+    if (scannedOrder.id !== order.id) {
+      setBarcodeScanError('Barcode does not match this order. Please scan the correct barcode.');
+      return;
+    }
+
+    // Close scanner and update status to PICKED_UP
+    setShowBarcodeScanner(false);
+    setBarcodeScanError(null);
+    
+    try {
+      setUpdating(true);
+      setUpdateError(null);
+      await agentApi.updateOrderStatus(orderId, 'PICKED_UP');
+      // Reload order to get updated status
+      await loadOrder();
+    } catch (err: any) {
+      setUpdateError(err.response?.data?.error || 'Failed to update order status');
+      console.error('Error updating order status:', err);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleBarcodeScanError = (error: string) => {
+    setBarcodeScanError(error);
+  };
+
+  const handleQRScanSuccess = async (scannedOrder: any) => {
+    if (!order) return;
+
+    // Verify the scanned order matches the current order
+    if (scannedOrder.id !== order.id) {
+      setQrScanError('QR code does not match this order. Please scan the correct QR code.');
+      return;
+    }
+
+    // Close scanner and update status to DELIVERED
+    setShowQRScanner(false);
+    setQrScanError(null);
+    
+    try {
+      setUpdating(true);
+      setUpdateError(null);
+      await agentApi.updateOrderStatus(orderId, 'DELIVERED');
+      // Reload order to get updated status
+      await loadOrder();
+    } catch (err: any) {
+      setUpdateError(err.response?.data?.error || 'Failed to update order status');
+      console.error('Error updating order status:', err);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleQRScanError = (error: string) => {
+    setQrScanError(error);
   };
 
   const formatDate = (dateString?: string) => {
@@ -221,6 +304,23 @@ export default function AgentOrderDetailsPage() {
             </Card>
           )}
 
+          {/* Delivery Verification */}
+          {(order.status === 'OUT_FOR_DELIVERY' || order.status === 'PICKED_UP') && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Delivery Verification</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <DeliveryVerification 
+                  orderId={order.id}
+                  onVerified={() => {
+                    loadOrder();
+                  }}
+                />
+              </CardContent>
+            </Card>
+          )}
+
           {/* Status Actions */}
           {canUpdateStatus() && (
             <Card>
@@ -236,9 +336,9 @@ export default function AgentOrderDetailsPage() {
                     onClick={() => handleStatusUpdate(nextStatus as any)}
                     disabled={updating}
                   >
-                    {nextStatus === 'PICKED_UP' && 'Mark as Picked Up'}
+                    {nextStatus === 'PICKED_UP' && 'Scan Barcode to Pick Up'}
                     {nextStatus === 'OUT_FOR_DELIVERY' && 'Mark as Out for Delivery'}
-                    {nextStatus === 'DELIVERED' && 'Mark as Delivered'}
+                    {nextStatus === 'DELIVERED' && 'Scan QR Code to Deliver'}
                   </Button>
                 )}
                 <Button
@@ -253,6 +353,80 @@ export default function AgentOrderDetailsPage() {
                 </Button>
               </CardContent>
             </Card>
+          )}
+
+          {/* Barcode Scanner Modal for Pickup */}
+          {showBarcodeScanner && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+              <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle>Scan Barcode to Collect Order</CardTitle>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setShowBarcodeScanner(false);
+                        setBarcodeScanError(null);
+                      }}
+                    >
+                      <XCircle className="h-5 w-5" />
+                    </Button>
+                  </div>
+                  <p className="text-sm text-gray-600 mt-2">
+                    Please scan the barcode on the order package to verify collection.
+                  </p>
+                </CardHeader>
+                <CardContent>
+                  {barcodeScanError && (
+                    <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-800 text-sm">
+                      {barcodeScanError}
+                    </div>
+                  )}
+                  <BarcodeScanner
+                    onScanSuccess={handleBarcodeScanSuccess}
+                    onScanError={handleBarcodeScanError}
+                  />
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* QR Scanner Modal for Delivery */}
+          {showQRScanner && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+              <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle>Scan QR Code to Deliver Order</CardTitle>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setShowQRScanner(false);
+                        setQrScanError(null);
+                      }}
+                    >
+                      <XCircle className="h-5 w-5" />
+                    </Button>
+                  </div>
+                  <p className="text-sm text-gray-600 mt-2">
+                    Please scan the QR code on the order package to verify delivery.
+                  </p>
+                </CardHeader>
+                <CardContent>
+                  {qrScanError && (
+                    <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-800 text-sm">
+                      {qrScanError}
+                    </div>
+                  )}
+                  <QRScanner
+                    onScanSuccess={handleQRScanSuccess}
+                    onScanError={handleQRScanError}
+                  />
+                </CardContent>
+              </Card>
+            </div>
           )}
 
           {/* Map */}
@@ -445,7 +619,7 @@ export default function AgentOrderDetailsPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center">
+                <div className="h-10 w-10 rounded-full bg-linear-to-br from-blue-500 to-purple-500 flex items-center justify-center">
                   <User className="h-5 w-5 text-white" />
                 </div>
                 <div className="flex-1 min-w-0">
@@ -471,6 +645,7 @@ export default function AgentOrderDetailsPage() {
               </div>
             </CardContent>
           </Card>
+
 
           {/* Support Ticket Form */}
           <Card>

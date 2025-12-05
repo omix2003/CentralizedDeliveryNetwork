@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { authenticate } from '../middleware/auth.middleware';
 import { requireAdmin } from '../middleware/role.middleware';
 import { adminController } from '../controllers/admin.controller';
+import { revenueController } from '../controllers/revenue.controller';
+import { walletController } from '../controllers/wallet.controller';
 
 const router = Router();
 
@@ -54,6 +56,18 @@ router.post('/support/tickets/:id/resolve', adminController.resolveTicket);
 router.get('/analytics/overview', adminController.getAnalyticsOverview);
 router.get('/analytics/revenue', adminController.getRevenueAnalytics);
 router.get('/analytics/performance', adminController.getPerformanceAnalytics);
+
+// ==================== REVENUE ====================
+router.get('/revenue/summary', revenueController.getPlatformRevenueSummary);
+router.get('/revenue', revenueController.getPlatformRevenue);
+
+// ==================== WALLET & PAYOUTS ====================
+router.get('/wallet', walletController.getAdminWallet);
+router.get('/wallet/transactions', walletController.getAdminWalletTransactions);
+router.get('/payouts', walletController.getAllPayouts);
+router.get('/payouts/ready', walletController.getAgentsReadyForPayout);
+router.post('/payouts/process', walletController.processPayout);
+router.post('/payouts/process-all', walletController.processAllPayouts);
 
 // ==================== SETTINGS ====================
 router.get('/settings', adminController.getSettings);

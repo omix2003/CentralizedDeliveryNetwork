@@ -103,7 +103,7 @@ export default function PartnerDetailsPage() {
               />
             ) : null}
             <div
-              className={`w-16 h-16 rounded-full bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center text-white ${partner.user.profilePicture ? 'hidden' : 'flex'}`}
+              className={`w-16 h-16 rounded-full bg-linear-to-br from-orange-500 to-red-600 flex items-center justify-center text-white ${partner.user.profilePicture ? 'hidden' : 'flex'}`}
             >
               <Building2 className="h-8 w-8" />
             </div>

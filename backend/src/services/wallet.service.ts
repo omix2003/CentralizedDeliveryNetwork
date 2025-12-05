@@ -1,0 +1,282 @@
+import { prisma } from '../lib/prisma';
+
+export interface WalletBalance {
+  balance: number;
+  totalEarned: number;
+  totalPaidOut: number;
+}
+
+export const walletService = {
+  /**
+   * Get or create admin wallet (singleton)
+   */
+  async getAdminWallet() {
+    let wallet = await prisma.adminWallet.findFirst();
+    
+    if (!wallet) {
+      wallet = await prisma.adminWallet.create({
+        data: {
+          balance: 0,
+          totalDeposited: 0,
+          totalPaidOut: 0,
+        },
+      });
+    }
+    
+    return wallet;
+  },
+
+  /**
+   * Get or create agent wallet
+   */
+  async getAgentWallet(agentId: string) {
+    let wallet = await prisma.agentWallet.findUnique({
+      where: { agentId },
+    });
+    
+    if (!wallet) {
+      // Calculate next Monday for weekly payout
+      const nextMonday = getNextMonday();
+      
+      wallet = await prisma.agentWallet.create({
+        data: {
+          agentId,
+          balance: 0,
+          totalEarned: 0,
+          totalPaidOut: 0,
+          nextPayoutDate: nextMonday,
+        },
+      });
+    }
+    
+    return wallet;
+  },
+
+  /**
+   * Credit agent wallet (when order is delivered)
+   */
+  async creditAgentWallet(agentId: string, amount: number, orderId: string, description?: string) {
+    const wallet = await walletService.getAgentWallet(agentId);
+    const balanceBefore = wallet.balance;
+    const balanceAfter = balanceBefore + amount;
+
+    // Update wallet
+    const updatedWallet = await prisma.agentWallet.update({
+      where: { agentId },
+      data: {
+        balance: balanceAfter,
+        totalEarned: wallet.totalEarned + amount,
+      },
+    });
+
+    // Create transaction record
+    await prisma.walletTransaction.create({
+      data: {
+        walletType: 'AGENT_WALLET',
+        agentWalletId: wallet.id,
+        orderId,
+        amount,
+        type: 'EARNING',
+        description: description || `Earning from order ${orderId.substring(0, 8).toUpperCase()}`,
+        balanceBefore,
+        balanceAfter,
+        status: 'COMPLETED',
+      },
+    });
+
+    return updatedWallet;
+  },
+
+  /**
+   * Credit admin wallet (when platform receives commission)
+   */
+  async creditAdminWallet(amount: number, orderId: string, description?: string) {
+    const wallet = await walletService.getAdminWallet();
+    const balanceBefore = wallet.balance;
+    const balanceAfter = balanceBefore + amount;
+
+    // Update wallet
+    const updatedWallet = await prisma.adminWallet.update({
+      where: { id: wallet.id },
+      data: {
+        balance: balanceAfter,
+        totalDeposited: wallet.totalDeposited + amount,
+      },
+    });
+
+    // Create transaction record
+    await prisma.walletTransaction.create({
+      data: {
+        walletType: 'ADMIN_WALLET',
+        adminWalletId: wallet.id,
+        orderId,
+        amount,
+        type: 'COMMISSION',
+        description: description || `Commission from order ${orderId.substring(0, 8).toUpperCase()}`,
+        balanceBefore,
+        balanceAfter,
+        status: 'COMPLETED',
+      },
+    });
+
+    return updatedWallet;
+  },
+
+  /**
+   * Debit admin wallet (when paying out to agent)
+   */
+  async debitAdminWallet(amount: number, payoutId: string, description?: string) {
+    const wallet = await walletService.getAdminWallet();
+    
+    if (wallet.balance < amount) {
+      throw new Error('Insufficient balance in admin wallet');
+    }
+
+    const balanceBefore = wallet.balance;
+    const balanceAfter = balanceBefore - amount;
+
+    // Update wallet
+    const updatedWallet = await prisma.adminWallet.update({
+      where: { id: wallet.id },
+      data: {
+        balance: balanceAfter,
+        totalPaidOut: wallet.totalPaidOut + amount,
+      },
+    });
+
+    // Create transaction record
+    await prisma.walletTransaction.create({
+      data: {
+        walletType: 'ADMIN_WALLET',
+        adminWalletId: wallet.id,
+        amount: -amount, // Negative for debit
+        type: 'PAYOUT',
+        description: description || `Payout ${payoutId.substring(0, 8).toUpperCase()}`,
+        balanceBefore,
+        balanceAfter,
+        status: 'COMPLETED',
+      },
+    });
+
+    return updatedWallet;
+  },
+
+  /**
+   * Debit agent wallet (when payout is processed)
+   */
+  async debitAgentWallet(agentId: string, amount: number, payoutId: string, description?: string) {
+    const wallet = await walletService.getAgentWallet(agentId);
+    
+    if (wallet.balance < amount) {
+      throw new Error('Insufficient balance in agent wallet');
+    }
+
+    const balanceBefore = wallet.balance;
+    const balanceAfter = balanceBefore - amount;
+
+    // Calculate next Monday for next payout
+    const nextMonday = getNextMonday();
+
+    // Update wallet
+    const updatedWallet = await prisma.agentWallet.update({
+      where: { agentId },
+      data: {
+        balance: balanceAfter,
+        totalPaidOut: wallet.totalPaidOut + amount,
+        lastPayoutDate: new Date(),
+        nextPayoutDate: nextMonday,
+      },
+    });
+
+    // Create transaction record
+    await prisma.walletTransaction.create({
+      data: {
+        walletType: 'AGENT_WALLET',
+        agentWalletId: wallet.id,
+        amount: -amount, // Negative for debit
+        type: 'PAYOUT',
+        description: description || `Payout ${payoutId.substring(0, 8).toUpperCase()}`,
+        balanceBefore,
+        balanceAfter,
+        status: 'COMPLETED',
+      },
+    });
+
+    return updatedWallet;
+  },
+
+  /**
+   * Get agent wallet balance
+   */
+  async getAgentWalletBalance(agentId: string): Promise<WalletBalance> {
+    const wallet = await walletService.getAgentWallet(agentId);
+    return {
+      balance: wallet.balance,
+      totalEarned: wallet.totalEarned,
+      totalPaidOut: wallet.totalPaidOut,
+    };
+  },
+
+  /**
+   * Get admin wallet balance
+   */
+  async getAdminWalletBalance(): Promise<WalletBalance & { totalDeposited: number }> {
+    const wallet = await walletService.getAdminWallet();
+    return {
+      balance: wallet.balance,
+      totalEarned: wallet.totalDeposited,
+      totalPaidOut: wallet.totalPaidOut,
+      totalDeposited: wallet.totalDeposited,
+    };
+  },
+
+  /**
+   * Get wallet transactions
+   */
+  async getWalletTransactions(
+    walletType: 'ADMIN_WALLET' | 'AGENT_WALLET',
+    walletId?: string,
+    limit: number = 50,
+    offset: number = 0
+  ) {
+    const where: any = { walletType };
+    if (walletType === 'ADMIN_WALLET' && walletId) {
+      where.adminWalletId = walletId;
+    } else if (walletType === 'AGENT_WALLET' && walletId) {
+      where.agentWalletId = walletId;
+    }
+
+    const transactions = await prisma.walletTransaction.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      skip: offset,
+      include: {
+        order: {
+          select: {
+            id: true,
+            status: true,
+          },
+        },
+      },
+    });
+
+    const total = await prisma.walletTransaction.count({ where });
+
+    return { transactions, total };
+  },
+};
+
+/**
+ * Get next Monday date
+ */
+function getNextMonday(): Date {
+  const today = new Date();
+  const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
+  const daysUntilMonday = dayOfWeek === 0 ? 1 : (8 - dayOfWeek) % 7 || 7;
+  const nextMonday = new Date(today);
+  nextMonday.setDate(today.getDate() + daysUntilMonday);
+  nextMonday.setHours(0, 0, 0, 0);
+  return nextMonday;
+}
+

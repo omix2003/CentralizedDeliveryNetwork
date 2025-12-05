@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, User, LogOut, Key, ChevronDown } from 'lucide-react';
+import { Search, User, LogOut, Key, ChevronDown, Menu } from 'lucide-react';
 // Bell icon removed - notifications disabled
 import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
@@ -81,21 +81,34 @@ export function Header({ title, showSearch = false, onMenuClick }: HeaderProps) 
   };
 
   return (
-    <header className="h-16 bg-white border-b border-gray-100 flex items-center justify-between px-6 sticky top-0 z-50">
-      {showSearch ? (
-        <div className="flex-1 max-w-2xl">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search orders, products..."
-              className="w-full pl-10 pr-4 py-2 bg-gray-50 border-0 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors"
-            />
+    <header className="h-16 bg-white border-b border-gray-100 flex items-center justify-between px-4 md:px-6 sticky top-0 z-50">
+      <div className="flex items-center gap-3 flex-1">
+        {/* Mobile Menu Button */}
+        {onMenuClick && (
+          <button
+            onClick={onMenuClick}
+            className="md:hidden p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200 transition-colors"
+            aria-label="Toggle sidebar"
+          >
+            <Menu className="h-5 w-5 text-gray-600" />
+          </button>
+        )}
+        
+        {showSearch ? (
+          <div className="flex-1 max-w-2xl">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search orders, products..."
+                className="w-full pl-10 pr-4 py-2 bg-gray-50 border-0 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors"
+              />
+            </div>
           </div>
-        </div>
-      ) : (
-        <div className="flex-1" />
-      )}
+        ) : (
+          <div className="flex-1" />
+        )}
+      </div>
 
       <div className="flex items-center gap-3">
         {/* Notifications - DISABLED */}

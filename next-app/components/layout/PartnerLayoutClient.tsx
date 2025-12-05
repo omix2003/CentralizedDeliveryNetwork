@@ -33,7 +33,7 @@ export function PartnerLayoutClient({ children }: { children: React.ReactNode })
   }, []);
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-gray-50 overflow-hidden">
       <Sidebar 
         role="PARTNER" 
         userEmail={session?.user?.email}

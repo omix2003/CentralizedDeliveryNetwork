@@ -677,6 +677,8 @@ export const agentController = {
         deliveredAt: order.deliveredAt?.toISOString(),
         cancelledAt: order.cancelledAt?.toISOString(),
         cancellationReason: order.cancellationReason,
+        barcode: order.barcode || null,
+        qrCode: order.qrCode || null,
         timing: {
           elapsedMinutes: timing.elapsedMinutes,
           remainingMinutes: timing.remainingMinutes,
@@ -737,6 +739,69 @@ export const agentController = {
           const duration = Math.floor((new Date().getTime() - order.pickedUpAt.getTime()) / 60000);
           updateData.actualDuration = duration;
         }
+        
+        // Calculate and create payment for delivered order
+        try {
+          const { paymentService } = await import('../services/payment.service');
+          const paymentCalculation = await paymentService.calculateOrderPayment(orderId, agentId);
+          await paymentService.createPayment(
+            agentId,
+            orderId,
+            paymentCalculation.netPay,
+            'DELIVERY_FEE'
+          );
+
+          // Credit agent wallet
+          const { walletService } = await import('../services/wallet.service');
+          await walletService.creditAgentWallet(
+            agentId,
+            paymentCalculation.netPay,
+            orderId,
+            `Earning from order ${orderId.substring(0, 8).toUpperCase()}`
+          );
+        } catch (paymentError: any) {
+          console.error('[Agent Controller] Error creating payment:', paymentError?.message);
+          // Don't fail the order update if payment creation fails
+        }
+
+        // Create revenue records for partner and platform
+        try {
+          const { revenueService } = await import('../services/revenue.service');
+          const now = new Date();
+          const periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          const periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+
+          // Create partner revenue
+          await revenueService.createPartnerRevenue(
+            order.partnerId,
+            orderId,
+            periodStart,
+            periodEnd,
+            'DAILY'
+          );
+
+          // Create platform revenue
+          const platformRevenue = await revenueService.createPlatformRevenue(
+            orderId,
+            order.partnerId,
+            agentId,
+            periodStart,
+            periodEnd,
+            'DAILY'
+          );
+
+          // Credit admin wallet with platform commission
+          const { walletService } = await import('../services/wallet.service');
+          await walletService.creditAdminWallet(
+            platformRevenue.netRevenue,
+            orderId,
+            `Commission from order ${orderId.substring(0, 8).toUpperCase()}`
+          );
+        } catch (revenueError: any) {
+          console.error('[Agent Controller] Error creating revenue records:', revenueError?.message);
+          // Don't fail the order update if revenue creation fails
+        }
+        
         // Update agent stats
         await prisma.agent.update({
           where: { id: agentId },

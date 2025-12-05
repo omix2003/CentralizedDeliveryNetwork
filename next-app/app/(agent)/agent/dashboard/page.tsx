@@ -8,12 +8,13 @@ import { MetricCard } from '@/components/shared/MetricCard';
 import { OrderCard } from '@/components/orders/OrderCard';
 import { AddressDisplay } from '@/components/orders/AddressDisplay';
 import { OnlineToggle } from '@/components/agent/OnlineToggle';
-import { Package, DollarSign, Clock, CheckCircle, AlertCircle } from 'lucide-react';
+import { Package, DollarSign, Clock, CheckCircle, AlertCircle, ArrowRight } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils/currency';
 import { useSession } from 'next-auth/react';
 import { agentApi, AvailableOrder, AgentMetrics } from '@/lib/api/agent';
 import { locationTracker, Location } from '@/lib/services/locationTracker';
 import { Skeleton } from '@/components/ui/Skeleton';
+import Link from 'next/link';
 
 export default function AgentDashboard() {
   const router = useRouter();
@@ -340,7 +341,61 @@ export default function AgentDashboard() {
             subtitle={`${metrics.totalOrders} total orders`}
           />
         </div>
-      ) : metricsError ? (
+      ) : null}
+
+      {/* Quick Links */}
+      {metrics && !metricsError && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Link href="/agent/payments">
+            <Card className="hover:shadow-md transition-shadow cursor-pointer">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-600 mb-1">View Payments</p>
+                    <p className="text-lg font-semibold text-gray-900">
+                      {formatCurrency(metrics.monthlyEarnings)}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">This month</p>
+                  </div>
+                  <ArrowRight className="h-5 w-5 text-gray-400" />
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/agent/calendar">
+            <Card className="hover:shadow-md transition-shadow cursor-pointer">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-600 mb-1">View Calendar</p>
+                    <p className="text-lg font-semibold text-gray-900">
+                      {metrics.completedOrders}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">Completed orders</p>
+                  </div>
+                  <ArrowRight className="h-5 w-5 text-gray-400" />
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/agent/scan">
+            <Card className="hover:shadow-md transition-shadow cursor-pointer">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-600 mb-1">Scan Order</p>
+                    <p className="text-lg font-semibold text-gray-900">Barcode/QR</p>
+                    <p className="text-xs text-gray-500 mt-1">Quick scan</p>
+                  </div>
+                  <ArrowRight className="h-5 w-5 text-gray-400" />
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+        </div>
+      )}
+
+      {metricsError ? (
         <Card className="border-yellow-200 bg-yellow-50">
           <CardContent className="py-4">
             <div className="flex items-center gap-2 text-yellow-800">
