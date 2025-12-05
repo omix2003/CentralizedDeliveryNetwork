@@ -857,6 +857,7 @@ export const agentController = {
     try {
       const agentId = getAgentId(req);
       if (!agentId) {
+        console.error('[Agent Metrics] No agent ID found in request');
         return res.status(404).json({ error: 'Agent profile not found' });
       }
 
@@ -951,33 +952,22 @@ export const agentController = {
         : 0;
 
       // Active orders (orders that are assigned, picked up, or out for delivery)
-      // Build active statuses array, handling DELAYED enum availability
-      const activeStatuses: any[] = [
-        OrderStatus.ASSIGNED, 
-        OrderStatus.PICKED_UP, 
-        OrderStatus.OUT_FOR_DELIVERY
-      ];
-      
-      // Add DELAYED if available in enum, otherwise add as string
+      // Query WITHOUT DELAYED to avoid enum errors - DELAYED doesn't exist in database enum yet
+      let activeOrders = 0;
       try {
-        if ((OrderStatus as any).DELAYED) {
-          activeStatuses.push((OrderStatus as any).DELAYED);
-        } else {
-          activeStatuses.push('DELAYED');
-        }
-      } catch (e) {
-        // If DELAYED not available, add as string literal
-        activeStatuses.push('DELAYED');
-      }
-      
-      const activeOrders = await prisma.order.count({
-        where: {
-          agentId,
-          status: {
-            in: activeStatuses,
+        // Only query statuses that definitely exist in the database enum
+        activeOrders = await prisma.order.count({
+          where: {
+            agentId,
+            status: {
+              in: [OrderStatus.ASSIGNED, OrderStatus.PICKED_UP, OrderStatus.OUT_FOR_DELIVERY],
+            },
           },
-        },
-      });
+        });
+      } catch (activeOrdersError: any) {
+        console.error('[Agent Metrics] Error counting active orders:', activeOrdersError?.message);
+        activeOrders = 0;
+      }
 
       // Get active order details if exists
       // Check both currentOrderId and any active order assigned to this agent
@@ -988,28 +978,12 @@ export const agentController = {
       
       // If no currentOrderId, check for any active order assigned to this agent
       if (!orderToCheck) {
-        const activeStatusesForQuery: any[] = [
-          OrderStatus.ASSIGNED, 
-          OrderStatus.PICKED_UP, 
-          OrderStatus.OUT_FOR_DELIVERY
-        ];
-        
-        // Add DELAYED if available
-        try {
-          if ((OrderStatus as any).DELAYED) {
-            activeStatusesForQuery.push((OrderStatus as any).DELAYED);
-          } else {
-            activeStatusesForQuery.push('DELAYED');
-          }
-        } catch (e) {
-          activeStatusesForQuery.push('DELAYED');
-        }
-        
+        // Query WITHOUT DELAYED to avoid enum errors
         const activeOrderRecord = await prisma.order.findFirst({
           where: {
             agentId,
             status: {
-              in: activeStatusesForQuery,
+              in: [OrderStatus.ASSIGNED, OrderStatus.PICKED_UP, OrderStatus.OUT_FOR_DELIVERY],
             },
           },
           orderBy: {
@@ -1019,6 +993,7 @@ export const agentController = {
             id: true,
           },
         });
+        
         orderToCheck = activeOrderRecord?.id || null;
       }
       
@@ -1044,27 +1019,14 @@ export const agentController = {
             console.warn('[Agent Metrics] Order not found:', orderToCheck);
             activeOrder = null;
           } else {
-            // Check if order status is active (including DELAYED)
-            const activeStatuses: any[] = [
+            // Check if order status is active (excluding DELAYED to avoid enum errors)
+            const activeStatuses: OrderStatus[] = [
               OrderStatus.ASSIGNED, 
               OrderStatus.PICKED_UP, 
               OrderStatus.OUT_FOR_DELIVERY
             ];
             
-            // Add DELAYED if available
-            try {
-              if ((OrderStatus as any).DELAYED) {
-                activeStatuses.push((OrderStatus as any).DELAYED);
-              } else {
-                activeStatuses.push('DELAYED');
-              }
-            } catch (e) {
-              activeStatuses.push('DELAYED');
-            }
-            
-            const isActiveStatus = activeStatuses.includes(order.status as any) || 
-              order.status === 'DELAYED' ||
-              (order.status as string) === 'DELAYED';
+            const isActiveStatus = activeStatuses.includes(order.status as OrderStatus);
             
             if (isActiveStatus) {
               // Check and update delayed status
@@ -1185,27 +1147,29 @@ export const agentController = {
         }
       }
 
+      // Ensure all values are valid numbers
       const response = {
-        todayOrders,
-        yesterdayOrders,
-        ordersChange: Math.round(ordersChange),
-        monthlyEarnings,
-        lastMonthEarnings,
-        earningsChange: Math.round(earningsChange),
-        activeOrders,
-        completedOrders: agent.completedOrders || 0,
-        totalOrders: agent.totalOrders || 0,
-        cancelledOrders: agent.cancelledOrders || 0,
-        acceptanceRate: agent.acceptanceRate || 0,
-        rating: agent.rating || 0,
-        thisMonthOrders: thisMonthOrders.length,
-        activeOrder,
+        todayOrders: Number(todayOrders) || 0,
+        yesterdayOrders: Number(yesterdayOrders) || 0,
+        ordersChange: Math.round(Number(ordersChange)) || 0,
+        monthlyEarnings: Number(monthlyEarnings) || 0,
+        lastMonthEarnings: Number(lastMonthEarnings) || 0,
+        earningsChange: Math.round(Number(earningsChange)) || 0,
+        activeOrders: Number(activeOrders) || 0,
+        completedOrders: Number(agent.completedOrders) || 0,
+        totalOrders: Number(agent.totalOrders) || 0,
+        cancelledOrders: Number(agent.cancelledOrders) || 0,
+        acceptanceRate: Number(agent.acceptanceRate) || 0,
+        rating: Number(agent.rating) || 0,
+        thisMonthOrders: Number(thisMonthOrders.length) || 0,
+        activeOrder: activeOrder || null,
       };
 
       console.log('[Agent Metrics] Successfully returning metrics:', {
         todayOrders: response.todayOrders,
         activeOrders: response.activeOrders,
         hasActiveOrder: !!response.activeOrder,
+        agentId,
       });
 
       res.json(response);
@@ -1216,11 +1180,21 @@ export const agentController = {
         stack: error?.stack,
         name: error?.name,
         code: error?.code,
+        agentId: getAgentId(req as any),
       });
       
-      // Return a more detailed error response
+      // Return a more detailed error response for common issues
       if (error?.code === 'P2002' || error?.message?.includes('Unique constraint')) {
         return res.status(400).json({ error: 'Database constraint violation' });
+      }
+      
+      if (error?.code === 'P2025' || error?.message?.includes('Record not found')) {
+        return res.status(404).json({ error: 'Agent not found' });
+      }
+      
+      // Log full error for debugging in production
+      if (process.env.NODE_ENV === 'production') {
+        console.error('[Agent Metrics] Full error object:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
       }
       
       next(error);
