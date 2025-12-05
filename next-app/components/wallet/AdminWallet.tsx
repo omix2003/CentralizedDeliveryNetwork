@@ -47,7 +47,7 @@ export function AdminWallet() {
   const [transactionsTotal, setTransactionsTotal] = useState(0);
   const [payoutsTotal, setPayoutsTotal] = useState(0);
   const limit = 10;
-  const { toast } = useToast();
+  const { showToast } = useToast();
 
   useEffect(() => {
     loadWallet();
@@ -119,20 +119,15 @@ export function AdminWallet() {
     try {
       setProcessing(true);
       const result = await adminApi.processAllPayouts('BANK_TRANSFER');
-      toast({
-        title: 'Payouts Processed',
-        description: `Successfully processed ${result.totalProcessed} payouts. ${result.totalFailed} failed.`,
-        variant: result.totalFailed > 0 ? 'destructive' : 'default',
-      });
+      showToast(
+        result.totalFailed > 0 ? 'warning' : 'success',
+        `Successfully processed ${result.totalProcessed} payouts. ${result.totalFailed > 0 ? `${result.totalFailed} failed.` : ''}`
+      );
       loadWallet();
       loadPayouts();
       loadReadyAgents();
     } catch (err: any) {
-      toast({
-        title: 'Error',
-        description: err.message || 'Failed to process payouts',
-        variant: 'destructive',
-      });
+      showToast('error', err.message || 'Failed to process payouts');
     } finally {
       setProcessing(false);
     }
@@ -149,19 +144,12 @@ export function AdminWallet() {
         agentId,
         paymentMethod: 'BANK_TRANSFER',
       });
-      toast({
-        title: 'Success',
-        description: 'Payout processed successfully',
-      });
+      showToast('success', 'Payout processed successfully');
       loadWallet();
       loadPayouts();
       loadReadyAgents();
     } catch (err: any) {
-      toast({
-        title: 'Error',
-        description: err.message || 'Failed to process payout',
-        variant: 'destructive',
-      });
+      showToast('error', err.message || 'Failed to process payout');
     } finally {
       setProcessing(false);
     }
