@@ -364,29 +364,18 @@ app.use((req, res) => {
         }
     }
 })();
-// Initialize delay checker service - check for delayed orders every minute
-if (process.env.NODE_ENV === 'production' || process.env.ENABLE_DELAY_CHECKER === 'true') {
-    const { delayCheckerService } = await Promise.resolve().then(() => __importStar(require('./services/delay-checker.service')));
-    setInterval(async () => {
-        try {
-            await delayCheckerService.checkDelayedOrders();
-        }
-        catch (error) {
-            console.error('[Server] Error in delay checker:', error);
-        }
-    }, 60000); // Check every minute
-    console.log('✅ Delay checker service initialized (checking every 60 seconds)');
-}
 // Initialize periodic delay checker (runs every minute)
 if (process.env.NODE_ENV === 'production' || process.env.ENABLE_DELAY_CHECKER === 'true') {
-    setInterval(async () => {
-        try {
-            const { delayCheckerService } = await Promise.resolve().then(() => __importStar(require('./services/delay-checker.service')));
-            await delayCheckerService.checkDelayedOrders();
-        }
-        catch (error) {
-            console.error('[Server] Error in periodic delay check:', error);
-        }
+    setInterval(() => {
+        (async () => {
+            try {
+                const { delayCheckerService } = await Promise.resolve().then(() => __importStar(require('./services/delay-checker.service')));
+                await delayCheckerService.checkDelayedOrders();
+            }
+            catch (error) {
+                console.error('[Server] Error in periodic delay check:', error);
+            }
+        })();
     }, 60000); // Check every minute
     console.log('✅ Periodic delay checker initialized (runs every 60 seconds)');
 }
