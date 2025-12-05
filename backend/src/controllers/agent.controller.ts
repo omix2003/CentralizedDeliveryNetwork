@@ -860,8 +860,10 @@ export const agentController = {
         return res.status(404).json({ error: 'Agent profile not found' });
       }
 
+      console.log('[Agent Metrics] Fetching metrics for agent:', agentId);
+
       const now = new Date();
-      const todayStart = new Date(now.setHours(0, 0, 0, 0));
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
       const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
       const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
@@ -1002,55 +1004,74 @@ export const agentController = {
             },
           });
 
-        const activeStatuses: OrderStatus[] = [
-          OrderStatus.ASSIGNED, 
-          OrderStatus.PICKED_UP, 
-          OrderStatus.OUT_FOR_DELIVERY, 
-          'DELAYED' as OrderStatus
-        ];
-        if (order && activeStatuses.includes(order.status) && order.partner && order.partner.user) {
-            // Check and update delayed status
-            const { delayCheckerService } = await import('../services/delay-checker.service');
-            await delayCheckerService.checkOrderDelay(order.id);
+          if (!order) {
+            console.warn('[Agent Metrics] Order not found:', orderToCheck);
+            activeOrder = null;
+          } else {
+            const activeStatuses: OrderStatus[] = [
+              OrderStatus.ASSIGNED, 
+              OrderStatus.PICKED_UP, 
+              OrderStatus.OUT_FOR_DELIVERY, 
+              'DELAYED' as OrderStatus
+            ];
             
-            // Refresh order to get updated status
-            const refreshedOrder = await prisma.order.findUnique({
-              where: { id: order.id },
-            });
+            if (activeStatuses.includes(order.status)) {
+              // Check and update delayed status
+              const { delayCheckerService } = await import('../services/delay-checker.service');
+              await delayCheckerService.checkOrderDelay(order.id);
+              
+              // Refresh order to get updated status
+              const refreshedOrder = await prisma.order.findUnique({
+                where: { id: order.id },
+              });
 
-            // Calculate timing information
-            const timing = delayCheckerService.getOrderTiming({
-              pickedUpAt: refreshedOrder?.pickedUpAt || order.pickedUpAt,
-              estimatedDuration: refreshedOrder?.estimatedDuration || order.estimatedDuration,
-            });
+              // Calculate timing information
+              const timing = delayCheckerService.getOrderTiming({
+                pickedUpAt: refreshedOrder?.pickedUpAt || order.pickedUpAt,
+                estimatedDuration: refreshedOrder?.estimatedDuration || order.estimatedDuration,
+              });
 
-            activeOrder = {
-              id: order.id,
-              trackingNumber: order.id.substring(0, 8).toUpperCase(),
-              status: refreshedOrder?.status || order.status,
-              pickup: {
-                latitude: order.pickupLat,
-                longitude: order.pickupLng,
-              },
-              dropoff: {
-                latitude: order.dropLat,
-                longitude: order.dropLng,
-              },
-              payout: order.payoutAmount,
-              priority: order.priority || 'NORMAL',
-              estimatedDuration: refreshedOrder?.estimatedDuration || order.estimatedDuration,
-              pickedUpAt: order.pickedUpAt?.toISOString(),
-              assignedAt: order.assignedAt?.toISOString(),
-              timing,
-              partner: {
-                name: order.partner.user.name,
-                companyName: order.partner.companyName || '',
-                phone: order.partner.user.phone || '',
-              },
-            };
+              // Safely access partner data with null checks
+              const partnerName = order.partner?.user?.name || 'Unknown Partner';
+              const partnerCompanyName = order.partner?.companyName || '';
+              const partnerPhone = order.partner?.user?.phone || '';
+
+              activeOrder = {
+                id: order.id,
+                trackingNumber: order.id.substring(0, 8).toUpperCase(),
+                status: refreshedOrder?.status || order.status,
+                pickup: {
+                  latitude: order.pickupLat,
+                  longitude: order.pickupLng,
+                },
+                dropoff: {
+                  latitude: order.dropLat,
+                  longitude: order.dropLng,
+                },
+                payout: order.payoutAmount,
+                priority: order.priority || 'NORMAL',
+                estimatedDuration: refreshedOrder?.estimatedDuration || order.estimatedDuration,
+                pickedUpAt: order.pickedUpAt?.toISOString(),
+                assignedAt: order.assignedAt?.toISOString(),
+                timing,
+                partner: {
+                  name: partnerName,
+                  companyName: partnerCompanyName,
+                  phone: partnerPhone,
+                },
+              };
+            } else {
+              // Order exists but is not in an active status
+              activeOrder = null;
+            }
           }
         } catch (error: any) {
           console.error('[Agent Metrics] Error fetching active order:', error);
+          console.error('[Agent Metrics] Error details:', {
+            message: error?.message,
+            stack: error?.stack,
+            orderId: orderToCheck,
+          });
           // Continue without active order if there's an error
           activeOrder = null;
         }
@@ -1072,7 +1093,13 @@ export const agentController = {
         thisMonthOrders: thisMonthOrders.length,
         activeOrder,
       });
-    } catch (error) {
+    } catch (error: any) {
+      console.error('[Agent Metrics] Error in getMetrics:', error);
+      console.error('[Agent Metrics] Error details:', {
+        message: error?.message,
+        stack: error?.stack,
+        name: error?.name,
+      });
       next(error);
     }
   },
