@@ -7,7 +7,7 @@
     "dev": "nodemon --exec ts-node src/server.ts",
     "build": "npx prisma generate && tsc",
     "start": "node dist/server.js",
-    "prestart": "echo 'Running migrations before server start...' && npx prisma migrate deploy || echo 'Migrations check completed (may already be applied)'",
+    "prestart": "echo 'Running migrations before server start...' && npx prisma migrate deploy",
     "build:render": "npm run build && chmod +x node_modules/.bin/prisma",
     "prisma:generate": "npx prisma generate",
     "prisma:migrate": "npx prisma migrate dev",

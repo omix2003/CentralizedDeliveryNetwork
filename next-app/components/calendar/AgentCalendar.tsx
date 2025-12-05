@@ -57,17 +57,39 @@ export function AgentCalendar({ viewType = 'MONTHLY' }: AgentCalendarProps) {
   };
 
   const getDaysInView = () => {
-    const days: Date[] = [];
+    const days: (Date | null)[] = [];
     const start = new Date(currentDate);
     
     if (activeView === 'MONTHLY') {
+      // Set to first day of the month
       start.setDate(1);
+      const firstDayOfWeek = start.getDay(); // 0 = Sunday, 1 = Monday, etc.
+      
+      // Get last day of the month
       const end = new Date(start);
       end.setMonth(end.getMonth() + 1);
       end.setDate(0); // Last day of month
+      const lastDayOfMonth = end.getDate();
       
-      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        days.push(new Date(d));
+      // Add padding for days before the first day of the month
+      for (let i = 0; i < firstDayOfWeek; i++) {
+        days.push(null);
+      }
+      
+      // Add all days of the month
+      for (let d = 1; d <= lastDayOfMonth; d++) {
+        const date = new Date(start);
+        date.setDate(d);
+        days.push(date);
+      }
+      
+      // Add padding for days after the last day of the month to complete the grid
+      const totalCells = days.length;
+      const remainingCells = 42 - totalCells; // 6 rows * 7 days = 42 cells
+      if (remainingCells > 0 && remainingCells < 7) {
+        for (let i = 0; i < remainingCells; i++) {
+          days.push(null);
+        }
       }
     } else {
       // Week view
@@ -84,16 +106,16 @@ export function AgentCalendar({ viewType = 'MONTHLY' }: AgentCalendarProps) {
     return days;
   };
 
-  const getScheduleForDate = (date: Date): AgentSchedule | undefined => {
-    if (!calendarData) return undefined;
+  const getScheduleForDate = (date: Date | null): AgentSchedule | undefined => {
+    if (!calendarData || !date) return undefined;
     const dateStr = date.toISOString().split('T')[0];
     return calendarData.schedules.find(
       (s) => s.date.split('T')[0] === dateStr
     );
   };
 
-  const getDeliveriesForDate = (date: Date) => {
-    if (!calendarData) return [];
+  const getDeliveriesForDate = (date: Date | null) => {
+    if (!calendarData || !date) return [];
     const dateStr = date.toISOString().split('T')[0];
     return calendarData.deliveries.filter(
       (d) => d.deliveredAt.split('T')[0] === dateStr
@@ -146,6 +168,16 @@ export function AgentCalendar({ viewType = 'MONTHLY' }: AgentCalendarProps) {
           </div>
         ))}
         {days.map((date, idx) => {
+          // Handle null dates (padding cells)
+          if (!date) {
+            return (
+              <div
+                key={idx}
+                className="min-h-24 p-2 border border-gray-100 rounded-lg bg-gray-50"
+              />
+            );
+          }
+
           const schedule = getScheduleForDate(date);
           const deliveries = getDeliveriesForDate(date);
           const isToday = date.toDateString() === new Date().toDateString();
