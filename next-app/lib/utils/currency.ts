@@ -62,3 +62,5 @@ export function parseCurrency(currencyString: string): number {
   return isNaN(parsed) ? 0 : parsed;
 }
 
+
+

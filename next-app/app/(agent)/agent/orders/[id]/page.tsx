@@ -57,6 +57,7 @@ export default function AgentOrderDetailsPage() {
       setLoading(true);
       setError(null);
       const data = await agentApi.getOrderDetails(orderId);
+      console.log('[Order Details] Order status:', data.status, 'isDelayed:', data.timing?.isDelayed, 'timing:', data.timing);
       setOrder(data);
       
       // Fetch addresses for display
@@ -119,6 +120,8 @@ export default function AgentOrderDetailsPage() {
         return 'OUT_FOR_DELIVERY';
       case 'OUT_FOR_DELIVERY':
         return 'DELIVERED';
+      case 'DELAYED':
+        return 'DELIVERED'; // Allow marking delayed orders as delivered
       default:
         return null;
     }
@@ -126,7 +129,7 @@ export default function AgentOrderDetailsPage() {
 
   const canUpdateStatus = () => {
     if (!order) return false;
-    return ['ASSIGNED', 'PICKED_UP', 'OUT_FOR_DELIVERY'].includes(order.status);
+    return ['ASSIGNED', 'PICKED_UP', 'OUT_FOR_DELIVERY', 'DELAYED'].includes(order.status);
   };
 
   if (loading) {
@@ -174,9 +177,11 @@ export default function AgentOrderDetailsPage() {
             <p className="text-gray-600 mt-1">#{order.trackingNumber}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <StatusBadge status={order.status} />
-          {order.status === 'DELAYED' && <DelayedBadge />}
+          {(order.status === 'DELAYED' || order.status?.toUpperCase() === 'DELAYED' || (order.timing?.isDelayed && order.status !== 'DELIVERED' && order.status !== 'CANCELLED')) && (
+            <DelayedBadge />
+          )}
         </div>
       </div>
 
@@ -208,6 +213,8 @@ export default function AgentOrderDetailsPage() {
                 <OrderTimer
                   pickedUpAt={order.pickedUpAt}
                   estimatedDuration={order.estimatedDuration}
+                  status={order.status}
+                  deliveredAt={order.deliveredAt}
                   timing={order.timing}
                 />
               </CardContent>

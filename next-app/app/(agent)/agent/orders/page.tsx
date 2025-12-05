@@ -16,6 +16,7 @@ import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { AddressDisplay } from '@/components/orders/AddressDisplay';
 import { SupportTicketForm } from '@/components/support/SupportTicketForm';
+import { DelayedBadge } from '@/components/orders/DelayedBadge';
 
 export default function AgentOrdersPage() {
   const router = useRouter();
@@ -368,11 +369,16 @@ export default function AgentOrdersPage() {
               <CardContent className="p-5">
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
+                    <div className="flex items-center gap-3 mb-2 flex-wrap">
                       <h4 className="text-lg font-semibold text-gray-900">
                         #{order.trackingNumber}
                       </h4>
-                      <StatusBadge status={order.status} />
+                      <div className="flex items-center gap-2">
+                        <StatusBadge status={order.status} />
+                        {(order.status === 'DELAYED' || order.status?.toUpperCase() === 'DELAYED' || ('timing' in order && order.timing?.isDelayed && order.status !== 'DELIVERED' && order.status !== 'CANCELLED')) && (
+                          <DelayedBadge />
+                        )}
+                      </div>
                     </div>
                     {activeTab === 'my-orders' && 'actualDuration' in order && order.actualDuration && (
                       <p className="text-sm text-gray-500">

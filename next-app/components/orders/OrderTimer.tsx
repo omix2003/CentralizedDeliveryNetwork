@@ -1,11 +1,13 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Clock } from 'lucide-react';
+import { Clock, CheckCircle } from 'lucide-react';
 
 interface OrderTimerProps {
   pickedUpAt: string | null | undefined;
   estimatedDuration: number | null | undefined;
+  status?: string; // Order status (e.g., 'DELIVERED', 'DELAYED', etc.)
+  deliveredAt?: string | null | undefined; // Delivery timestamp
   timing?: {
     elapsedMinutes: number | null;
     remainingMinutes: number | null;
@@ -15,13 +17,31 @@ interface OrderTimerProps {
   };
 }
 
-export function OrderTimer({ pickedUpAt, estimatedDuration, timing }: OrderTimerProps) {
+export function OrderTimer({ pickedUpAt, estimatedDuration, status, deliveredAt, timing }: OrderTimerProps) {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [isDelayed, setIsDelayed] = useState(false);
+  const [isDelivered, setIsDelivered] = useState(false);
+  const [finalElapsedTime, setFinalElapsedTime] = useState<{ minutes: number; seconds: number } | null>(null);
 
   useEffect(() => {
     if (!pickedUpAt || !estimatedDuration) {
       return;
+    }
+
+    // Check if order is delivered
+    const delivered = status === 'DELIVERED' && deliveredAt;
+    setIsDelivered(!!delivered);
+
+    // If delivered, calculate final elapsed time once
+    if (delivered && deliveredAt) {
+      const deliveryTime = new Date(deliveredAt).getTime();
+      const pickupTime = new Date(pickedUpAt).getTime();
+      const elapsedMs = deliveryTime - pickupTime;
+      const elapsedMinutes = Math.floor(elapsedMs / 60000);
+      const elapsedSecs = Math.floor((elapsedMs % 60000) / 1000);
+      setFinalElapsedTime({ minutes: elapsedMinutes, seconds: elapsedSecs });
+      setIsDelayed(elapsedMinutes > estimatedDuration);
+      return; // Stop updating if delivered
     }
 
     const calculateElapsed = () => {
@@ -38,21 +58,31 @@ export function OrderTimer({ pickedUpAt, estimatedDuration, timing }: OrderTimer
     // Calculate immediately
     calculateElapsed();
 
-    // Update every second
+    // Update every second (only if not delivered)
     const interval = setInterval(calculateElapsed, 1000);
 
     return () => clearInterval(interval);
-  }, [pickedUpAt, estimatedDuration]);
+  }, [pickedUpAt, estimatedDuration, status, deliveredAt]);
 
   if (!pickedUpAt || !estimatedDuration) {
     return null;
   }
 
-  const now = new Date().getTime();
-  const pickupTime = new Date(pickedUpAt).getTime();
-  const elapsedMs = now - pickupTime;
-  const elapsedMinutes = Math.floor(elapsedMs / 60000);
-  const elapsedSecs = Math.floor((elapsedMs % 60000) / 1000);
+  // Use final elapsed time if delivered, otherwise calculate current time
+  let elapsedMinutes: number;
+  let elapsedSecs: number;
+  
+  if (isDelivered && finalElapsedTime) {
+    elapsedMinutes = finalElapsedTime.minutes;
+    elapsedSecs = finalElapsedTime.seconds;
+  } else {
+    const now = new Date().getTime();
+    const pickupTime = new Date(pickedUpAt).getTime();
+    const elapsedMs = now - pickupTime;
+    elapsedMinutes = Math.floor(elapsedMs / 60000);
+    elapsedSecs = Math.floor((elapsedMs % 60000) / 1000);
+  }
+  
   const remainingMinutes = Math.max(0, estimatedDuration - elapsedMinutes);
   const isCurrentlyDelayed = elapsedMinutes > estimatedDuration || timing?.isDelayed;
 
@@ -67,33 +97,57 @@ export function OrderTimer({ pickedUpAt, estimatedDuration, timing }: OrderTimer
 
   return (
     <div className={`flex items-center gap-2 p-3 rounded-lg ${
-      isCurrentlyDelayed ? 'bg-red-50 border border-red-200' : 'bg-blue-50 border border-blue-200'
+      isDelivered 
+        ? 'bg-green-50 border border-green-200' 
+        : isCurrentlyDelayed 
+          ? 'bg-red-50 border border-red-200' 
+          : 'bg-blue-50 border border-blue-200'
     }`}>
-      <Clock className={`h-5 w-5 ${isCurrentlyDelayed ? 'text-red-600' : 'text-blue-600'}`} />
+      {isDelivered ? (
+        <CheckCircle className="h-5 w-5 text-green-600" />
+      ) : (
+        <Clock className={`h-5 w-5 ${isCurrentlyDelayed ? 'text-red-600' : 'text-blue-600'}`} />
+      )}
       <div className="flex-1">
         <div className="text-sm font-medium text-gray-700">
-          {isCurrentlyDelayed ? 'Delayed' : 'Elapsed Time'}
+          {isDelivered 
+            ? 'Delivered' 
+            : isCurrentlyDelayed 
+              ? 'Delayed' 
+              : 'Elapsed Time'}
         </div>
-        <div className={`text-lg font-bold ${isCurrentlyDelayed ? 'text-red-600' : 'text-blue-600'}`}>
+        <div className={`text-lg font-bold ${
+          isDelivered 
+            ? 'text-green-600' 
+            : isCurrentlyDelayed 
+              ? 'text-red-600' 
+              : 'text-blue-600'
+        }`}>
           {formatTime(elapsedMinutes, elapsedSecs)}
         </div>
       </div>
-      {!isCurrentlyDelayed && remainingMinutes > 0 && (
+      {isDelivered ? (
+        <div className="text-right">
+          <div className="text-xs text-gray-500">Total Time</div>
+          <div className="text-sm font-semibold text-gray-700">
+            {elapsedMinutes}m {elapsedSecs}s
+          </div>
+        </div>
+      ) : !isCurrentlyDelayed && remainingMinutes > 0 ? (
         <div className="text-right">
           <div className="text-xs text-gray-500">Remaining</div>
           <div className="text-sm font-semibold text-gray-700">
             {remainingMinutes}m
           </div>
         </div>
-      )}
-      {isCurrentlyDelayed && (
+      ) : isCurrentlyDelayed ? (
         <div className="text-right">
           <div className="text-xs text-red-600">Over by</div>
           <div className="text-sm font-semibold text-red-600">
             {elapsedMinutes - estimatedDuration}m
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

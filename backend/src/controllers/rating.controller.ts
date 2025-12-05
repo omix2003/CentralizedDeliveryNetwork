@@ -156,13 +156,6 @@ export const ratingController = {
           where: { agentId },
           include: {
             partner: {
-              include: {
-                user: {
-                  select: {
-                    name: true,
-                  },
-                },
-              },
               select: {
                 id: true,
                 companyName: true,
@@ -197,7 +190,23 @@ export const ratingController = {
           totalPages: Math.ceil(total / Number(limit)),
         },
       });
-    } catch (error) {
+    } catch (error: any) {
+      console.error('[Rating] Error fetching agent ratings:', {
+        message: error?.message,
+        code: error?.code,
+        meta: error?.meta,
+        stack: error?.stack,
+        agentId: req.params.agentId,
+      });
+      
+      // If table doesn't exist, provide helpful error
+      if (error?.code === 'P2021' || error?.message?.includes('does not exist')) {
+        return res.status(500).json({
+          error: 'Database migration required',
+          message: 'The AgentRating table does not exist. Please run database migrations: npx prisma migrate deploy',
+        });
+      }
+      
       next(error);
     }
   },
