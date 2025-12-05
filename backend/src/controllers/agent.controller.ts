@@ -540,11 +540,30 @@ export const agentController = {
       }
       // If status is 'ALL' or not provided, return all orders (including past/completed ones)
 
+      // Using select instead of include to avoid accessing columns that may not exist yet
       const orders = await prisma.order.findMany({
         where,
-        include: {
+        select: {
+          id: true,
+          status: true,
+          pickupLat: true,
+          pickupLng: true,
+          dropLat: true,
+          dropLng: true,
+          payoutAmount: true,
+          priority: true,
+          estimatedDuration: true,
+          actualDuration: true,
+          createdAt: true,
+          assignedAt: true,
+          pickedUpAt: true,
+          deliveredAt: true,
+          cancelledAt: true,
+          cancellationReason: true,
           partner: {
-            include: {
+            select: {
+              id: true,
+              companyName: true,
               user: {
                 select: {
                   name: true,
