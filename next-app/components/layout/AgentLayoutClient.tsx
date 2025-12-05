@@ -15,16 +15,20 @@ export function AgentLayoutClient({ children }: { children: React.ReactNode }) {
     return true; // Default to open for SSR
   });
 
-  // Close sidebar when clicking on a link (mobile)
+  // Handle sidebar state on window resize
   useEffect(() => {
     const handleResize = () => {
-      // Auto-close sidebar on mobile when window is resized to desktop
+      // Open sidebar on desktop, close on mobile
       if (window.innerWidth >= 768) {
-        setSidebarOpen(false);
+        setSidebarOpen(true); // Always open on desktop
+      } else {
+        setSidebarOpen(false); // Always closed on mobile
       }
     };
 
     window.addEventListener('resize', handleResize);
+    // Set initial state on mount
+    handleResize();
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
