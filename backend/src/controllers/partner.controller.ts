@@ -231,20 +231,63 @@ export const partnerController = {
         if (createError?.code === 'P2021' || createError?.code === 'P2022' || 
             createError?.message?.includes('orderAmount') || 
             createError?.message?.includes('commissionRate') ||
-            createError?.message?.includes('orderType')) {
+            createError?.message?.includes('orderType') ||
+            createError?.message?.includes('does not exist')) {
           console.warn('[Partner] Order columns missing, creating order without revenue fields:', createError.message);
-          order = await prisma.order.create({
-            data: {
-              partnerId,
-              pickupLat,
-              pickupLng,
-              dropLat,
-              dropLng,
-              payoutAmount,
-              priority,
-              estimatedDuration,
-              status: 'SEARCHING_AGENT',
-            },
+          
+          // Try creating with minimal fields - catch any additional missing column errors
+          try {
+            order = await prisma.order.create({
+              data: {
+                partnerId,
+                pickupLat,
+                pickupLng,
+                dropLat,
+                dropLng,
+                payoutAmount,
+                priority,
+                estimatedDuration,
+                status: 'SEARCHING_AGENT',
+              },
+              select: {
+                id: true,
+                status: true,
+                pickupLat: true,
+                pickupLng: true,
+                dropLat: true,
+                dropLng: true,
+                payoutAmount: true,
+                priority: true,
+                estimatedDuration: true,
+                createdAt: true,
+                partner: {
+                  select: {
+                    id: true,
+                    user: {
+                      select: {
+                        name: true,
+                        id: true,
+                      },
+                    },
+                  },
+                },
+              },
+            });
+          } catch (fallbackError: any) {
+            // If even basic fields fail, try with absolute minimum
+            if (fallbackError?.code === 'P2021' || fallbackError?.code === 'P2022' || 
+                fallbackError?.message?.includes('does not exist')) {
+              console.warn('[Partner] Additional columns missing, trying absolute minimum fields:', fallbackError.message);
+              order = await prisma.order.create({
+                data: {
+                  partnerId,
+                  pickupLat,
+                  pickupLng,
+                  dropLat,
+                  dropLng,
+                  payoutAmount,
+                  status: 'SEARCHING_AGENT',
+                },
             select: {
               id: true,
               status: true,
@@ -728,19 +771,45 @@ export const partnerController = {
             createError?.message?.includes('commissionRate') ||
             createError?.message?.includes('orderType')) {
           console.warn('[Partner API] Order columns missing, creating order without revenue fields:', createError.message);
-          order = await prisma.order.create({
-            data: {
-              partnerId: partner.partnerId,
-              pickupLat,
-              pickupLng,
-              dropLat,
-              dropLng,
-              payoutAmount,
-              priority,
-              estimatedDuration,
-              status: 'SEARCHING_AGENT',
-            },
-          });
+          
+          // Try creating with minimal fields - catch any additional missing column errors
+          try {
+            order = await prisma.order.create({
+              data: {
+                partnerId: partner.partnerId,
+                pickupLat,
+                pickupLng,
+                dropLat,
+                dropLng,
+                payoutAmount,
+                priority,
+                estimatedDuration,
+                status: 'SEARCHING_AGENT',
+              },
+            });
+          } catch (fallbackError: any) {
+            // If even basic fields fail, try with absolute minimum
+            if (fallbackError?.code === 'P2021' || fallbackError?.code === 'P2022' || 
+                fallbackError?.message?.includes('does not exist') ||
+                fallbackError?.message?.includes('priority') ||
+                fallbackError?.message?.includes('estimatedDuration')) {
+              console.warn('[Partner API] Additional columns missing, trying absolute minimum fields:', fallbackError.message);
+              order = await prisma.order.create({
+                data: {
+                  partnerId: partner.partnerId,
+                  pickupLat,
+                  pickupLng,
+                  dropLat,
+                  dropLng,
+                  payoutAmount,
+                  status: 'SEARCHING_AGENT',
+                },
+              });
+            } else {
+              // Re-throw if it's a different error
+              throw fallbackError;
+            }
+          }
         } else {
           // Re-throw if it's a different error
           throw createError;
