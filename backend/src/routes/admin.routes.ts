@@ -73,4 +73,7 @@ router.post('/payouts/process-all', walletController.processAllPayouts);
 router.get('/settings', adminController.getSettings);
 router.put('/settings', adminController.updateSettings);
 
+// ==================== SYNC ====================
+router.post('/sync/wallet-revenue', adminController.syncWalletAndRevenue);
+
 export default router;

@@ -16,7 +16,8 @@
     "prisma:migrate:deploy": "npx prisma migrate deploy",
     "prisma:studio": "npx prisma studio",
     "prisma:seed": "ts-node prisma/seed.ts",
-    "test:assignment": "ts-node src/scripts/test-assignment.ts"
+    "test:assignment": "ts-node src/scripts/test-assignment.ts",
+    "sync:wallet-revenue": "ts-node src/scripts/sync-wallet-revenue.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

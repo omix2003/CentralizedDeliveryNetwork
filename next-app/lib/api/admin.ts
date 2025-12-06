@@ -425,5 +425,14 @@ export const adminApi = {
     const response = await apiClient.post('/admin/payouts/process-all', { paymentMethod });
     return response.data;
   },
+
+  // Sync
+  async syncWalletAndRevenue(): Promise<{
+    message: string;
+    status: string;
+  }> {
+    const response = await apiClient.post('/admin/sync/wallet-revenue');
+    return response.data;
+  },
 };
 

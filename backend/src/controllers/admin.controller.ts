@@ -2552,5 +2552,33 @@ export const adminController = {
       next(error);
     }
   },
+
+  // POST /api/admin/sync/wallet-revenue - Synchronize wallet and revenue with actual values
+  async syncWalletAndRevenue(req: Request, res: Response, next: NextFunction) {
+    try {
+      // Import and run the sync function
+      const { syncWalletAndRevenue } = await import('../scripts/sync-wallet-revenue');
+      
+      // Run sync in background and return immediately
+      syncWalletAndRevenue()
+        .then(() => {
+          console.log('[Admin] Wallet and revenue synchronization completed');
+        })
+        .catch((error: any) => {
+          console.error('[Admin] Wallet and revenue synchronization failed:', error);
+        });
+
+      res.json({
+        message: 'Wallet and revenue synchronization started',
+        status: 'processing',
+      });
+    } catch (error: any) {
+      console.error('[Admin] Error starting sync:', error);
+      res.status(500).json({
+        error: 'Failed to start synchronization',
+        message: error.message,
+      });
+    }
+  },
 };
 
