@@ -12,7 +12,7 @@ export const publicController = {
         return res.status(400).json({ error: 'Order ID is required' });
       }
 
-      // Find order by ID (first 8 characters match or full ID)
+      // Find order by ID (first 8 characters match or full ID) - using select to avoid non-existent columns
       const order = await prisma.order.findFirst({
         where: {
           OR: [
@@ -21,7 +21,23 @@ export const publicController = {
             { id: { startsWith: id.toLowerCase() } },
           ],
         },
-        include: {
+        select: {
+          id: true,
+          status: true,
+          pickupLat: true,
+          pickupLng: true,
+          dropLat: true,
+          dropLng: true,
+          priority: true,
+          estimatedDuration: true,
+          actualDuration: true,
+          assignedAt: true,
+          pickedUpAt: true,
+          deliveredAt: true,
+          cancelledAt: true,
+          cancellationReason: true,
+          createdAt: true,
+          updatedAt: true,
           partner: {
             select: {
               companyName: true,
@@ -33,7 +49,8 @@ export const publicController = {
             },
           },
           agent: {
-            include: {
+            select: {
+              id: true,
               user: {
                 select: {
                   name: true,
