@@ -448,7 +448,7 @@ export const agentController = {
           throw new Error('Order is no longer available');
         }
 
-        // Update order
+        // Update order (using select to avoid barcode/qrCode if columns don't exist)
         const order = await tx.order.update({
           where: { id: orderId },
           data: {
@@ -456,9 +456,25 @@ export const agentController = {
             status: 'ASSIGNED',
             assignedAt: new Date(),
           },
-          include: {
+          select: {
+            id: true,
+            status: true,
+            agentId: true,
+            partnerId: true,
+            pickupLat: true,
+            pickupLng: true,
+            dropLat: true,
+            dropLng: true,
+            payoutAmount: true,
+            priority: true,
+            estimatedDuration: true,
+            assignedAt: true,
+            createdAt: true,
+            updatedAt: true,
             partner: {
-              include: {
+              select: {
+                id: true,
+                companyName: true,
                 user: {
                   select: {
                     name: true,
@@ -1013,9 +1029,29 @@ export const agentController = {
         });
       }
 
+      // Update order (using select to avoid barcode/qrCode if columns don't exist)
       const updatedOrder = await prisma.order.update({
         where: { id: orderId },
         data: updateData,
+        select: {
+          id: true,
+          status: true,
+          agentId: true,
+          partnerId: true,
+          pickupLat: true,
+          pickupLng: true,
+          dropLat: true,
+          dropLng: true,
+          payoutAmount: true,
+          priority: true,
+          estimatedDuration: true,
+          pickedUpAt: true,
+          deliveredAt: true,
+          cancelledAt: true,
+          assignedAt: true,
+          createdAt: true,
+          updatedAt: true,
+        },
       });
 
       // Check for delay after status update (if order was picked up or is out for delivery)

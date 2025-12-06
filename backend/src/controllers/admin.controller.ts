@@ -1226,6 +1226,7 @@ export const adminController = {
               status: 'ASSIGNED',
               assignedAt: new Date(),
             },
+            select: { id: true, status: true, agentId: true }, // Only select fields we need
           });
 
           await tx.agent.update({
@@ -1244,6 +1245,7 @@ export const adminController = {
             status: 'SEARCHING_AGENT',
             assignedAt: null,
           },
+          select: { id: true, status: true, agentId: true }, // Only select fields we need
         });
 
         // Trigger assignment engine

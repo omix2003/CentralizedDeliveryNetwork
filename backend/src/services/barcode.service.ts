@@ -25,13 +25,27 @@ export async function assignBarcodeToOrder(orderId: string) {
   const barcode = generateBarcode(orderId);
   const qrCode = generateQRCode(orderId);
 
-  return await prisma.order.update({
-    where: { id: orderId },
-    data: {
-      barcode,
-      qrCode,
-    },
-  });
+  try {
+    // Try to update with barcode/qrCode
+    return await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        barcode,
+        qrCode,
+      },
+    });
+  } catch (error: any) {
+    // If columns don't exist (P2022), log and return null
+    if (error?.code === 'P2022' || error?.message?.includes('barcode') || error?.message?.includes('qrCode')) {
+      console.warn(`[Barcode Service] Barcode/QR code columns not available for order ${orderId.substring(0, 8)}. Migration may need to run.`);
+      // Return the order without barcode/qrCode
+      return await prisma.order.findUnique({
+        where: { id: orderId },
+      });
+    }
+    // Re-throw other errors
+    throw error;
+  }
 }
 
 /**
