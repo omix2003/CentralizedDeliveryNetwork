@@ -395,11 +395,8 @@ export const adminApi = {
   },
 
   async getAgentsReadyForPayout(): Promise<{
-    agents: Array<{
-      agentId: string;
-      balance: number;
-      nextPayoutDate: string | null;
-    }>;
+    weekly: Array<{ agentId: string; balance: number; nextPayoutDate: string | null; agentName: string }>;
+    monthly: Array<{ agentId: string; balance: number; nextPayoutDate: string | null; agentName: string }>;
   }> {
     const response = await apiClient.get('/admin/payouts/ready');
     return response.data;

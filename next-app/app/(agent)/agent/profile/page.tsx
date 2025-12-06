@@ -413,7 +413,7 @@ export default function AgentProfilePage() {
               </div>
               <div className="flex items-center gap-2 text-gray-700">
                 <span className="font-medium">Payout Plan:</span>
-                <Badge variant={profile.payoutPlan === 'WEEKLY' ? 'default' : 'secondary'}>
+                <Badge variant={profile.payoutPlan === 'WEEKLY' ? 'default' : 'purple'}>
                   {profile.payoutPlan === 'WEEKLY' ? 'Weekly' : 'Monthly'}
                 </Badge>
               </div>
