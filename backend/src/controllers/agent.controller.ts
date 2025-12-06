@@ -387,8 +387,25 @@ export const agentController = {
       }
 
       // Check if order exists and is available
+      // Use select to avoid fetching barcode/qrCode if columns don't exist yet
       const order = await prisma.order.findUnique({
         where: { id: orderId },
+        select: {
+          id: true,
+          status: true,
+          agentId: true,
+          partnerId: true,
+          pickupLat: true,
+          pickupLng: true,
+          dropLat: true,
+          dropLng: true,
+          payoutAmount: true,
+          priority: true,
+          estimatedDuration: true,
+          assignedAt: true,
+          createdAt: true,
+          updatedAt: true,
+        },
       });
 
       if (!order) {
@@ -406,8 +423,25 @@ export const agentController = {
       // Assign order to agent (using transaction to prevent race conditions)
       const updatedOrder = await prisma.$transaction(async (tx) => {
         // Double-check order is still available
+        // Use select to avoid fetching barcode/qrCode if columns don't exist yet
         const currentOrder = await tx.order.findUnique({
           where: { id: orderId },
+          select: {
+            id: true,
+            status: true,
+            agentId: true,
+            partnerId: true,
+            pickupLat: true,
+            pickupLng: true,
+            dropLat: true,
+            dropLng: true,
+            payoutAmount: true,
+            priority: true,
+            estimatedDuration: true,
+            assignedAt: true,
+            createdAt: true,
+            updatedAt: true,
+          },
         });
 
         if (!currentOrder || currentOrder.agentId || currentOrder.status !== 'SEARCHING_AGENT') {
