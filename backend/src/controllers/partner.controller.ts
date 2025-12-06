@@ -660,6 +660,24 @@ export const partnerController = {
         console.warn('[Partner] Error calculating timing:', error.message);
       }
 
+      // Try to get barcode and qrCode if they exist
+      let barcode = null;
+      let qrCode = null;
+      try {
+        const orderWithCodes = await prisma.order.findUnique({
+          where: { id: orderId },
+          select: {
+            barcode: true,
+            qrCode: true,
+          },
+        });
+        barcode = orderWithCodes?.barcode || null;
+        qrCode = orderWithCodes?.qrCode || null;
+      } catch (error: any) {
+        // Columns might not exist, that's okay
+        console.warn('[Partner] Could not fetch barcode/qrCode:', error.message);
+      }
+
       res.json({
         id: order.id,
         trackingNumber: order.id.substring(0, 8).toUpperCase(),
@@ -683,6 +701,8 @@ export const partnerController = {
         cancellationReason: order.cancellationReason,
         createdAt: order.createdAt.toISOString(),
         updatedAt: order.updatedAt.toISOString(),
+        barcode: barcode,
+        qrCode: qrCode,
         timing: {
           elapsedMinutes: timing.elapsedMinutes,
           remainingMinutes: timing.remainingMinutes,
