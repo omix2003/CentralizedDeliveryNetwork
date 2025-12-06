@@ -378,7 +378,7 @@ export const partnerController = {
         pickupLat: finalOrder.pickupLat,
         pickupLng: finalOrder.pickupLng,
         payoutAmount: finalOrder.payoutAmount,
-        priority: (finalOrder.priority as 'HIGH' | 'NORMAL' | 'LOW') || 'NORMAL',
+        priority: ((finalOrder as any).priority as 'HIGH' | 'NORMAL' | 'LOW') || 'NORMAL',
         maxRadius: 5000, // 5km
         maxAgentsToOffer: 5,
         offerTimeout: 30, // 30 seconds
@@ -421,8 +421,8 @@ export const partnerController = {
           longitude: order.dropLng,
         },
         payout: order.payoutAmount,
-        priority: order.priority,
-        estimatedDuration: order.estimatedDuration,
+        priority: (order as any).priority || 'NORMAL',
+        estimatedDuration: (order as any).estimatedDuration || null,
         createdAt: order.createdAt.toISOString(),
       });
     } catch (error) {
