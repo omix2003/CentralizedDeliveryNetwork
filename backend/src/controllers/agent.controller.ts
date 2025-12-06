@@ -1512,7 +1512,8 @@ export const agentController = {
         where.status = status;
       }
 
-      let tickets, total;
+      let tickets: any[] = [];
+      let total = 0;
       try {
         [tickets, total] = await Promise.all([
           prisma.supportTicket.findMany({
