@@ -184,45 +184,96 @@ export const partnerController = {
       const finalOrderAmount = orderAmount || (payoutAmount * 1.25);
 
       // Create order first (barcode/QR will be generated after)
-      const order = await prisma.order.create({
-        data: {
-          partnerId,
-          pickupLat,
-          pickupLng,
-          dropLat,
-          dropLng,
-          payoutAmount,
-          orderAmount: finalOrderAmount,
-          orderType: orderType as 'ON_DEMAND' | 'B2B_BULK',
-          commissionRate: finalCommissionRate,
-          priority,
-          estimatedDuration,
-          status: 'SEARCHING_AGENT',
-        },
-        select: {
-          id: true,
-          status: true,
-          pickupLat: true,
-          pickupLng: true,
-          dropLat: true,
-          dropLng: true,
-          payoutAmount: true,
-          priority: true,
-          estimatedDuration: true,
-          createdAt: true,
-          partner: {
-            select: {
-              id: true,
-              user: {
-                select: {
-                  name: true,
-                  id: true,
+      // Try with all fields first, fallback to basic fields if columns don't exist
+      let order;
+      try {
+        order = await prisma.order.create({
+          data: {
+            partnerId,
+            pickupLat,
+            pickupLng,
+            dropLat,
+            dropLng,
+            payoutAmount,
+            orderAmount: finalOrderAmount,
+            orderType: orderType as 'ON_DEMAND' | 'B2B_BULK',
+            commissionRate: finalCommissionRate,
+            priority,
+            estimatedDuration,
+            status: 'SEARCHING_AGENT',
+          },
+          select: {
+            id: true,
+            status: true,
+            pickupLat: true,
+            pickupLng: true,
+            dropLat: true,
+            dropLng: true,
+            payoutAmount: true,
+            priority: true,
+            estimatedDuration: true,
+            createdAt: true,
+            partner: {
+              select: {
+                id: true,
+                user: {
+                  select: {
+                    name: true,
+                    id: true,
+                  },
                 },
               },
             },
           },
-        },
-      });
+        });
+      } catch (createError: any) {
+        // If columns don't exist (P2021/P2022), create order without them
+        if (createError?.code === 'P2021' || createError?.code === 'P2022' || 
+            createError?.message?.includes('orderAmount') || 
+            createError?.message?.includes('commissionRate') ||
+            createError?.message?.includes('orderType')) {
+          console.warn('[Partner] Order columns missing, creating order without revenue fields:', createError.message);
+          order = await prisma.order.create({
+            data: {
+              partnerId,
+              pickupLat,
+              pickupLng,
+              dropLat,
+              dropLng,
+              payoutAmount,
+              priority,
+              estimatedDuration,
+              status: 'SEARCHING_AGENT',
+            },
+            select: {
+              id: true,
+              status: true,
+              pickupLat: true,
+              pickupLng: true,
+              dropLat: true,
+              dropLng: true,
+              payoutAmount: true,
+              priority: true,
+              estimatedDuration: true,
+              createdAt: true,
+              partner: {
+                select: {
+                  id: true,
+                  user: {
+                    select: {
+                      name: true,
+                      id: true,
+                    },
+                  },
+                },
+              },
+            },
+          });
+        } else {
+          // Re-throw if it's a different error
+          throw createError;
+        }
+      }
 
       // Generate and assign barcode/QR code after order creation
       try {
@@ -651,22 +702,50 @@ export const partnerController = {
       const finalOrderAmount = orderAmount || (payoutAmount * 1.25);
 
       // Create order first
-      const order = await prisma.order.create({
-        data: {
-          partnerId: partner.partnerId,
-          pickupLat,
-          pickupLng,
-          dropLat,
-          dropLng,
-          payoutAmount,
-          orderAmount: finalOrderAmount,
-          orderType: orderType as 'ON_DEMAND' | 'B2B_BULK',
-          commissionRate: finalCommissionRate,
-          priority,
-          estimatedDuration,
-          status: 'SEARCHING_AGENT',
-        },
-      });
+      // Try with all fields first, fallback to basic fields if columns don't exist
+      let order;
+      try {
+        order = await prisma.order.create({
+          data: {
+            partnerId: partner.partnerId,
+            pickupLat,
+            pickupLng,
+            dropLat,
+            dropLng,
+            payoutAmount,
+            orderAmount: finalOrderAmount,
+            orderType: orderType as 'ON_DEMAND' | 'B2B_BULK',
+            commissionRate: finalCommissionRate,
+            priority,
+            estimatedDuration,
+            status: 'SEARCHING_AGENT',
+          },
+        });
+      } catch (createError: any) {
+        // If columns don't exist (P2021/P2022), create order without them
+        if (createError?.code === 'P2021' || createError?.code === 'P2022' || 
+            createError?.message?.includes('orderAmount') || 
+            createError?.message?.includes('commissionRate') ||
+            createError?.message?.includes('orderType')) {
+          console.warn('[Partner API] Order columns missing, creating order without revenue fields:', createError.message);
+          order = await prisma.order.create({
+            data: {
+              partnerId: partner.partnerId,
+              pickupLat,
+              pickupLng,
+              dropLat,
+              dropLng,
+              payoutAmount,
+              priority,
+              estimatedDuration,
+              status: 'SEARCHING_AGENT',
+            },
+          });
+        } else {
+          // Re-throw if it's a different error
+          throw createError;
+        }
+      }
 
       // Generate and assign barcode/QR code after order creation
       const { barcodeService } = await import('../services/barcode.service');
