@@ -288,30 +288,28 @@ export const partnerController = {
                   payoutAmount,
                   status: 'SEARCHING_AGENT',
                 },
-            select: {
-              id: true,
-              status: true,
-              pickupLat: true,
-              pickupLng: true,
-              dropLat: true,
-              dropLng: true,
-              payoutAmount: true,
-              priority: true,
-              estimatedDuration: true,
-              createdAt: true,
-              partner: {
                 select: {
                   id: true,
-                  user: {
+                  status: true,
+                  pickupLat: true,
+                  pickupLng: true,
+                  dropLat: true,
+                  dropLng: true,
+                  payoutAmount: true,
+                  createdAt: true,
+                  partner: {
                     select: {
-                      name: true,
                       id: true,
+                      user: {
+                        select: {
+                          name: true,
+                          id: true,
+                        },
+                      },
                     },
                   },
                 },
-              },
-            },
-          });
+              });
         } else {
           // Re-throw if it's a different error
           throw createError;
