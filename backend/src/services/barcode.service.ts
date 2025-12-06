@@ -125,6 +125,7 @@ export async function findOrderByQRCode(qrCode: string) {
       select: {
         id: true,
         status: true,
+        agentId: true,
         pickupLat: true,
         pickupLng: true,
         dropLat: true,
