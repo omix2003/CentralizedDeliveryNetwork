@@ -38,9 +38,15 @@ export async function assignBarcodeToOrder(orderId: string) {
     // If columns don't exist (P2022), log and return null
     if (error?.code === 'P2022' || error?.message?.includes('barcode') || error?.message?.includes('qrCode')) {
       console.warn(`[Barcode Service] Barcode/QR code columns not available for order ${orderId.substring(0, 8)}. Migration may need to run.`);
-      // Return the order without barcode/qrCode
+      // Return the order without barcode/qrCode (using select to avoid fetching barcode/qrCode)
       return await prisma.order.findUnique({
         where: { id: orderId },
+        select: {
+          id: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+        },
       });
     }
     // Re-throw other errors
@@ -52,31 +58,51 @@ export async function assignBarcodeToOrder(orderId: string) {
  * Find order by barcode
  */
 export async function findOrderByBarcode(barcode: string) {
-  return await prisma.order.findUnique({
-    where: { barcode },
-    include: {
-      partner: {
-        include: {
-          user: {
-            select: {
-              name: true,
-              phone: true,
+  try {
+    return await prisma.order.findUnique({
+      where: { barcode },
+      select: {
+        id: true,
+        status: true,
+        pickupLat: true,
+        pickupLng: true,
+        dropLat: true,
+        dropLng: true,
+        payoutAmount: true,
+        createdAt: true,
+        partner: {
+          select: {
+            id: true,
+            companyName: true,
+            user: {
+              select: {
+                name: true,
+                phone: true,
+              },
+            },
+          },
+        },
+        agent: {
+          select: {
+            id: true,
+            user: {
+              select: {
+                name: true,
+                phone: true,
+              },
             },
           },
         },
       },
-      agent: {
-        include: {
-          user: {
-            select: {
-              name: true,
-              phone: true,
-            },
-          },
-        },
-      },
-    },
-  });
+    });
+  } catch (error: any) {
+    // If barcode column doesn't exist, return null
+    if (error?.code === 'P2021' || error?.code === 'P2022' || error?.message?.includes('barcode')) {
+      console.warn('[Barcode Service] Barcode column not available. Migration may need to run.');
+      return null;
+    }
+    throw error;
+  }
 }
 
 /**
@@ -86,36 +112,93 @@ export async function findOrderByQRCode(qrCode: string) {
   // Handle both QR code format and direct order ID
   const orderId = qrCode.startsWith('ORDER:') ? qrCode.replace('ORDER:', '') : qrCode;
   
-  return await prisma.order.findFirst({
-    where: {
-      OR: [
-        { qrCode },
-        { id: orderId },
-      ],
-    },
-    include: {
-      partner: {
-        include: {
-          user: {
-            select: {
-              name: true,
-              phone: true,
+  try {
+    // First try with qrCode in where clause
+    return await prisma.order.findFirst({
+      where: {
+        OR: [
+          { qrCode },
+          { id: orderId },
+        ],
+      },
+      select: {
+        id: true,
+        status: true,
+        pickupLat: true,
+        pickupLng: true,
+        dropLat: true,
+        dropLng: true,
+        payoutAmount: true,
+        createdAt: true,
+        partner: {
+          select: {
+            id: true,
+            companyName: true,
+            user: {
+              select: {
+                name: true,
+                phone: true,
+              },
+            },
+          },
+        },
+        agent: {
+          select: {
+            id: true,
+            user: {
+              select: {
+                name: true,
+                phone: true,
+              },
             },
           },
         },
       },
-      agent: {
-        include: {
-          user: {
-            select: {
-              name: true,
-              phone: true,
+    });
+  } catch (error: any) {
+    // If qrCode column doesn't exist, fall back to finding by ID only
+    if (error?.code === 'P2021' || error?.code === 'P2022' || error?.message?.includes('qrCode')) {
+      console.warn('[Barcode Service] QR code column not available, falling back to order ID lookup.');
+        return await prisma.order.findFirst({
+          where: { id: orderId },
+          select: {
+            id: true,
+            status: true,
+            agentId: true,
+            pickupLat: true,
+            pickupLng: true,
+            dropLat: true,
+            dropLng: true,
+            payoutAmount: true,
+            createdAt: true,
+            partner: {
+              select: {
+                id: true,
+                companyName: true,
+                user: {
+                  select: {
+                    name: true,
+                    phone: true,
+                  },
+                },
+              },
+            },
+            agent: {
+              select: {
+                id: true,
+                user: {
+                  select: {
+                    name: true,
+                    phone: true,
+                  },
+                },
+              },
             },
           },
-        },
-      },
-    },
-  });
+        });
+    }
+    throw error;
+  }
 }
 
 export const barcodeService = {

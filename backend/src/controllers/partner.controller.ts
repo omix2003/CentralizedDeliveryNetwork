@@ -939,9 +939,22 @@ export const partnerController = {
       const { barcodeService } = await import('../services/barcode.service');
       await barcodeService.assignBarcodeToOrder(order.id);
 
-      // Fetch updated order with barcode/QR
+      // Fetch updated order (using select to avoid barcode/qrCode if columns don't exist)
       const orderWithBarcode = await prisma.order.findUnique({
         where: { id: order.id },
+        select: {
+          id: true,
+          status: true,
+          pickupLat: true,
+          pickupLng: true,
+          dropLat: true,
+          dropLng: true,
+          payoutAmount: true,
+          priority: true,
+          estimatedDuration: true,
+          createdAt: true,
+          updatedAt: true,
+        },
       });
 
       // Notify partner via webhook
@@ -993,12 +1006,33 @@ export const partnerController = {
           id: orderId,
           partnerId: partner.partnerId, // Ensure partner owns this order
         },
-        include: {
+        select: {
+          id: true,
+          status: true,
+          pickupLat: true,
+          pickupLng: true,
+          dropLat: true,
+          dropLng: true,
+          payoutAmount: true,
+          priority: true,
+          estimatedDuration: true,
+          actualDuration: true,
+          assignedAt: true,
+          pickedUpAt: true,
+          deliveredAt: true,
+          cancelledAt: true,
+          cancellationReason: true,
+          createdAt: true,
+          updatedAt: true,
           agent: {
-            include: {
+            select: {
+              id: true,
+              vehicleType: true,
+              rating: true,
               user: {
                 select: {
                   name: true,
+                  email: true,
                   phone: true,
                 },
               },
@@ -1064,11 +1098,16 @@ export const partnerController = {
         estimatedDuration,
       } = req.body;
 
-      // Find the order and verify ownership
+      // Find the order and verify ownership (using select to avoid barcode/qrCode)
       const existingOrder = await prisma.order.findFirst({
         where: {
           id: orderId,
           partnerId, // Ensure partner owns this order
+        },
+        select: {
+          id: true,
+          status: true,
+          partnerId: true,
         },
       });
 
@@ -1613,6 +1652,10 @@ export const partnerController = {
       if (orderId) {
         const order = await prisma.order.findUnique({
           where: { id: orderId },
+          select: {
+            id: true,
+            partnerId: true,
+          },
         });
 
         if (!order) {
