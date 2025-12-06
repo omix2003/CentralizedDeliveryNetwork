@@ -36,12 +36,39 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.app = void 0;
 const express_1 = __importDefault(require("express"));
 const http_1 = __importDefault(require("http"));
 const cors_1 = __importDefault(require("cors"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const path_1 = __importDefault(require("path"));
-const redis_1 = require("./lib/redis");
+// Optional Redis import - app works without it
+// Use a function to lazily load Redis to avoid module load errors
+let redisModuleCache = null;
+const loadRedisModule = () => {
+    if (redisModuleCache !== null) {
+        return redisModuleCache;
+    }
+    try {
+        redisModuleCache = require('./lib/redis');
+        return redisModuleCache;
+    }
+    catch (error) {
+        // Module not found - provide fallback
+        redisModuleCache = {
+            getRedisClient: () => null,
+            isRedisConnected: () => false,
+            testRedisConnection: async () => false,
+            getRedisStatus: () => ({ connected: false, status: 'not_available', message: 'Redis module not available' }),
+        };
+        console.warn('⚠️  Redis module not available, running without Redis');
+        return redisModuleCache;
+    }
+};
+const getRedisClient = () => loadRedisModule().getRedisClient();
+const isRedisConnected = () => loadRedisModule().isRedisConnected();
+const testRedisConnection = () => loadRedisModule().testRedisConnection();
+const getRedisStatus = () => loadRedisModule().getRedisStatus();
 const error_middleware_1 = require("./middleware/error.middleware");
 const websocket_1 = require("./lib/websocket");
 const prisma_1 = require("./lib/prisma");
@@ -80,15 +107,18 @@ process.on('uncaughtException', (error) => {
     // For now, we'll just log it
 });
 const app = (0, express_1.default)();
-const httpServer = http_1.default.createServer(app);
+exports.app = app;
+// Only create HTTP server if not running on Vercel (serverless)
+const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV;
+const httpServer = !isVercel ? http_1.default.createServer(app) : null;
 const PORT = process.env.PORT || 5000;
 // Initialize Redis connection (optional - app will work without it)
 if (process.env.REDIS_ENABLED === 'false') {
     console.log('ℹ️  Redis is disabled (REDIS_ENABLED=false). Running without Redis.');
 }
-else {
+else if (getRedisClient) {
     try {
-        (0, redis_1.getRedisClient)();
+        getRedisClient();
     }
     catch (error) {
         // Redis initialization failed, but we'll continue without it
@@ -172,9 +202,15 @@ app.get('/health', async (req, res) => {
     let redisStatus = 'disconnected';
     let redisDetails = null;
     try {
-        const isConnected = await (0, redis_1.testRedisConnection)();
-        redisStatus = isConnected ? 'connected' : 'disconnected';
-        redisDetails = (0, redis_1.getRedisStatus)();
+        if (testRedisConnection && getRedisStatus) {
+            const isConnected = await testRedisConnection();
+            redisStatus = isConnected ? 'connected' : 'disconnected';
+            redisDetails = getRedisStatus();
+        }
+        else {
+            redisStatus = 'not_available';
+            redisDetails = { message: 'Redis module not available' };
+        }
     }
     catch (error) {
         redisStatus = 'error';
@@ -419,17 +455,28 @@ if (process.env.NODE_ENV === 'production' || process.env.ENABLE_DELAY_CHECKER ==
     }, 60000); // Check every minute
     console.log('✅ Periodic delay checker initialized (runs every 60 seconds)');
 }
-// Initialize WebSocket server
-(0, websocket_1.initializeWebSocket)(httpServer);
-// Start HTTP server
-httpServer.listen(PORT, () => {
-    console.log(`🚀 Backend server running on http://localhost:${PORT}`);
-    console.log(`📡 Available endpoints:`);
-    console.log(`   GET  http://localhost:${PORT}/health`);
-    console.log(`   GET  http://localhost:${PORT}/api/test`);
-    console.log(`   POST http://localhost:${PORT}/api/auth/login`);
-    console.log(`   POST http://localhost:${PORT}/api/auth/register`);
-    console.log(`   GET  http://localhost:${PORT}/api/auth/me`);
-    console.log(`   WebSocket: ws://localhost:${PORT}/socket.io`);
-});
+// Initialize WebSocket server (skip on Vercel - not supported)
+if (!isVercel && httpServer) {
+    (0, websocket_1.initializeWebSocket)(httpServer);
+    console.log('✅ WebSocket server initialized');
+}
+else if (isVercel) {
+    console.log('⚠️  WebSocket disabled on Vercel (not supported in serverless environment)');
+}
+// Start HTTP server (skip on Vercel - serverless functions don't need to listen)
+if (!isVercel && httpServer) {
+    httpServer.listen(PORT, () => {
+        console.log(`🚀 Backend server running on http://localhost:${PORT}`);
+        console.log(`📡 Available endpoints:`);
+        console.log(`   GET  http://localhost:${PORT}/health`);
+        console.log(`   GET  http://localhost:${PORT}/api/test`);
+        console.log(`   POST http://localhost:${PORT}/api/auth/login`);
+        console.log(`   POST http://localhost:${PORT}/api/auth/register`);
+        console.log(`   GET  http://localhost:${PORT}/api/auth/me`);
+        console.log(`   WebSocket: ws://localhost:${PORT}/socket.io`);
+    });
+}
+else if (isVercel) {
+    console.log('✅ Express app configured for Vercel serverless');
+}
 //# sourceMappingURL=server.js.map
