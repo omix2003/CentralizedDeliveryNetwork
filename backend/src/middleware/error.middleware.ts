@@ -70,6 +70,16 @@ export const errorHandler=(
             });
         }
 
+        if (err.code === 'P2021' || err.code === 'P2022') {
+            // Table or column does not exist
+            return res.status(503).json({
+                error: 'Service Unavailable',
+                message: 'Database schema is not up to date. Please run migrations.',
+                code: err.code,
+                ...(process.env.NODE_ENV === 'development' && { details: err.meta }),
+            });
+        }
+
         // Generic Prisma error
         return res.status(500).json({
             error: 'Database Error',

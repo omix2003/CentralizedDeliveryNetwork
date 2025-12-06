@@ -131,10 +131,31 @@ export const publicController = {
         timeout: 10000, // 10 second timeout
       });
 
-      if (response.data.status !== 'OK') {
+      // Handle different Google Maps API response statuses
+      if (response.data.status === 'OK') {
+        // Success - return the data
+      } else if (response.data.status === 'ZERO_RESULTS') {
+        // No route found - this is a valid response, not an error
+        return res.status(200).json({
+          status: 'ZERO_RESULTS',
+          message: 'No route found between the specified locations',
+          routes: [],
+        });
+      } else if (response.data.status === 'NOT_FOUND') {
+        return res.status(404).json({
+          error: 'Location not found',
+          message: response.data.error_message || 'One or both locations could not be found',
+        });
+      } else if (response.data.status === 'INVALID_REQUEST') {
+        return res.status(400).json({
+          error: 'Invalid request',
+          message: response.data.error_message || 'The request was invalid',
+        });
+      } else {
+        // Other errors (OVER_QUERY_LIMIT, REQUEST_DENIED, UNKNOWN_ERROR)
         return res.status(400).json({
           error: `Directions API error: ${response.data.status}`,
-          message: response.data.error_message,
+          message: response.data.error_message || 'An error occurred while fetching directions',
         });
       }
 

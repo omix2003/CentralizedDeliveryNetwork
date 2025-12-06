@@ -312,13 +312,37 @@ app.get('/api/debug/routes', (req, res) => {
 // Error handler - must come before 404 handler
 app.use(errorHandler);
 
-// 404 handler - must be last (after error handler)
+// Method not allowed handler - check if route exists with different method
+app.use((req, res, next) => {
+  // Check if this is a known route path but wrong method
+  const knownRoutes = [
+    { path: '/api/auth/login', methods: ['POST'] },
+    { path: '/api/auth/register', methods: ['POST'] },
+    { path: '/api/auth/me', methods: ['GET'] },
+    { path: '/api/auth/profile-picture', methods: ['POST'] },
+    { path: '/api/auth/change-password', methods: ['PUT'] },
+  ];
+
+  const route = knownRoutes.find(r => r.path === req.path);
+  if (route && !route.methods.includes(req.method)) {
+    return res.status(405).json({
+      error: 'Method Not Allowed',
+      message: `${req.method} method is not allowed for this route`,
+      allowedMethods: route.methods,
+      path: req.path,
+    });
+  }
+  next();
+});
+
+// 404 handler - must be last (after error handler and method check)
 app.use((req, res) => {
   console.log(`❌ 404 - Route not found: ${req.method} ${req.originalUrl}`);
   res.status(404).json({ 
     error: 'Route not found',
     method: req.method,
     path: req.originalUrl,
+    message: 'The requested route does not exist',
     availableRoutes: [
       'GET /health',
       'GET /api/test',
