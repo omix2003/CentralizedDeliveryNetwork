@@ -5,10 +5,10 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "nodemon --exec ts-node src/server.ts",
-    "build": "npx prisma generate && tsc",
+    "build": "node node_modules/prisma/build/index.js generate && tsc",
     "start": "node dist/server.js",
     "prestart": "chmod +x node_modules/.bin/prisma 2>/dev/null || true && echo 'Running migrations before server start...' && npx prisma migrate deploy || echo 'Migration failed, continuing anyway...'",
-    "postinstall": "npx prisma generate || echo 'Prisma generate failed, will retry during build'",
+    "postinstall": "node node_modules/prisma/build/index.js generate || npx prisma generate || echo 'Prisma generate failed, will retry during build'",
     "build:vercel": "npx prisma generate && tsc",
     "build:render": "npm run build && chmod +x node_modules/.bin/prisma",
     "prisma:generate": "npx prisma generate",
