@@ -64,6 +64,7 @@ export async function findOrderByBarcode(barcode: string) {
       select: {
         id: true,
         status: true,
+        agentId: true,
         pickupLat: true,
         pickupLng: true,
         dropLat: true,
