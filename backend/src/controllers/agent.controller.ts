@@ -44,6 +44,7 @@ export const agentController = {
         id: agent.id,
         status: agent.status,
         vehicleType: agent.vehicleType,
+        payoutPlan: agent.payoutPlan || 'WEEKLY',
         city: agent.city,
         state: agent.state,
         pincode: agent.pincode,
@@ -75,17 +76,52 @@ export const agentController = {
         return res.status(404).json({ error: 'Agent profile not found' });
       }
 
-      const { city, state, pincode, vehicleType } = req.body;
+      const { city, state, pincode, vehicleType, payoutPlan } = req.body;
+
+      // If payout plan is being changed, update wallet's next payout date
+      let updateData: any = {
+        ...(city !== undefined && { city }),
+        ...(state !== undefined && { state }),
+        ...(pincode !== undefined && { pincode }),
+        ...(vehicleType && { vehicleType }),
+        ...(payoutPlan && { payoutPlan }),
+      };
+
+      // If payout plan is changing, update wallet's next payout date
+      if (payoutPlan) {
+        const { walletService } = await import('../services/wallet.service');
+        const wallet = await walletService.getAgentWallet(agentId);
+        
+        // Get the helper function to calculate next payout date
+        const getNextPayoutDate = (plan: 'WEEKLY' | 'MONTHLY'): Date => {
+          if (plan === 'MONTHLY') {
+            const today = new Date();
+            const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+            nextMonth.setHours(0, 0, 0, 0);
+            return nextMonth;
+          } else {
+            const today = new Date();
+            const dayOfWeek = today.getDay();
+            const daysUntilMonday = dayOfWeek === 0 ? 1 : (8 - dayOfWeek) % 7 || 7;
+            const nextMonday = new Date(today);
+            nextMonday.setDate(today.getDate() + daysUntilMonday);
+            nextMonday.setHours(0, 0, 0, 0);
+            return nextMonday;
+          }
+        };
+
+        await prisma.agentWallet.update({
+          where: { agentId },
+          data: {
+            nextPayoutDate: getNextPayoutDate(payoutPlan),
+          },
+        });
+      }
 
       // Update agent profile
       const agent = await prisma.agent.update({
         where: { id: agentId },
-        data: {
-          ...(city !== undefined && { city }),
-          ...(state !== undefined && { state }),
-          ...(pincode !== undefined && { pincode }),
-          ...(vehicleType && { vehicleType }),
-        },
+        data: updateData,
         include: {
           user: {
             select: {
@@ -940,48 +976,44 @@ export const agentController = {
           updateData.actualDuration = duration;
         }
         
-        // Calculate and create payment for delivered order
+        // Update order status first so revenue calculation works
+        await prisma.order.update({
+          where: { id: orderId },
+          data: updateData,
+        });
+        
+        // Credit wallets directly based on 70/30 split
         try {
-          const { paymentService } = await import('../services/payment.service');
-          const paymentCalculation = await paymentService.calculateOrderPayment(orderId, agentId);
-          await paymentService.createPayment(
-            agentId,
-            orderId,
-            paymentCalculation.netPay,
-            'DELIVERY_FEE'
-          );
-
-          // Credit agent wallet
           const { walletService } = await import('../services/wallet.service');
+          const { revenueService } = await import('../services/revenue.service');
+          
+          // Calculate revenue for this order (70/30 split)
+          // Now the order status is DELIVERED, so this will work
+          const revenue = await revenueService.calculateOrderRevenue(orderId);
+          
+          console.log(`[Agent Controller] Crediting wallets for order ${orderId.substring(0, 8)}: Agent=${revenue.deliveryFee}, Admin=${revenue.platformFee}`);
+          
+          // Credit agent wallet with 70% (payoutAmount)
           await walletService.creditAgentWallet(
             agentId,
-            paymentCalculation.netPay,
+            revenue.deliveryFee, // 70% of orderAmount
             orderId,
-            `Earning from order ${orderId.substring(0, 8).toUpperCase()}`
+            `Earning from order ${orderId.substring(0, 8).toUpperCase()} (70% of order)`
           );
-        } catch (paymentError: any) {
-          console.error('[Agent Controller] Error creating payment:', paymentError?.message);
-          // Don't fail the order update if payment creation fails
-        }
 
-        // Create revenue records for partner and platform
-        try {
-          const { revenueService } = await import('../services/revenue.service');
+          // Credit admin wallet with 30% commission
+          await walletService.creditAdminWallet(
+            revenue.platformFee, // 30% of orderAmount
+            orderId,
+            `Commission from order ${orderId.substring(0, 8).toUpperCase()} (30% of order)`
+          );
+
+          // Create platform revenue record
           const now = new Date();
           const periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
           const periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-
-          // Create partner revenue
-          await revenueService.createPartnerRevenue(
-            order.partnerId,
-            orderId,
-            periodStart,
-            periodEnd,
-            'DAILY'
-          );
-
-          // Create platform revenue
-          const platformRevenue = await revenueService.createPlatformRevenue(
+          
+          await revenueService.createPlatformRevenue(
             orderId,
             order.partnerId,
             agentId,
@@ -989,17 +1021,12 @@ export const agentController = {
             periodEnd,
             'DAILY'
           );
-
-          // Credit admin wallet with platform commission
-          const { walletService } = await import('../services/wallet.service');
-          await walletService.creditAdminWallet(
-            platformRevenue.netRevenue,
-            orderId,
-            `Commission from order ${orderId.substring(0, 8).toUpperCase()}`
-          );
-        } catch (revenueError: any) {
-          console.error('[Agent Controller] Error creating revenue records:', revenueError?.message);
-          // Don't fail the order update if revenue creation fails
+          
+          console.log(`[Agent Controller] Successfully credited wallets for order ${orderId.substring(0, 8)}`);
+        } catch (walletError: any) {
+          console.error('[Agent Controller] Error crediting wallets:', walletError?.message);
+          console.error('[Agent Controller] Wallet error stack:', walletError?.stack);
+          // Don't fail the order update if wallet credit fails
         }
         
         // Update agent stats
@@ -1011,6 +1038,23 @@ export const agentController = {
             currentOrderId: null,
             status: 'ONLINE', // Back to online after delivery
           },
+        });
+        
+        // Return early since we already updated the order
+        const updatedOrder = await prisma.order.findUnique({
+          where: { id: orderId },
+          select: {
+            id: true,
+            status: true,
+            deliveredAt: true,
+            actualDuration: true,
+          },
+        });
+
+        return res.json({
+          id: updatedOrder?.id,
+          status: updatedOrder?.status,
+          message: 'Order status updated successfully',
         });
       }
 

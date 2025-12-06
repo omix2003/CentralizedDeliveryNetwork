@@ -416,13 +416,22 @@ export const adminApi = {
     return response.data;
   },
 
-  async processAllPayouts(paymentMethod: 'BANK_TRANSFER' | 'UPI' | 'MOBILE_MONEY' = 'BANK_TRANSFER'): Promise<{
-    message: string;
-    results: Array<{ success: boolean; agentId: string; payoutId?: string; error?: string }>;
+  async processAllWeeklyPayouts(paymentMethod: 'BANK_TRANSFER' | 'UPI' | 'MOBILE_MONEY' = 'BANK_TRANSFER'): Promise<{
     totalProcessed: number;
     totalFailed: number;
+    results: Array<{ success: boolean; agentId: string; payoutId?: string; error?: string }>;
   }> {
-    const response = await apiClient.post('/admin/payouts/process-all', { paymentMethod });
+    const response = await apiClient.post('/admin/payouts/process-all-weekly', { paymentMethod });
+    return response.data;
+  },
+
+  async processAllMonthlyPayouts(paymentMethod: 'BANK_TRANSFER' | 'UPI' | 'MOBILE_MONEY' = 'BANK_TRANSFER'): Promise<{
+    message: string;
+    totalProcessed: number;
+    totalFailed: number;
+    results: Array<{ success: boolean; agentId: string; payoutId?: string; error?: string }>;
+  }> {
+    const response = await apiClient.post('/admin/payouts/process-all-monthly', { paymentMethod });
     return response.data;
   },
 

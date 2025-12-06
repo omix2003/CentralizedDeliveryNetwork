@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { prisma } from '../lib/prisma';
 import { walletService } from '../services/wallet.service';
 import { payoutService } from '../services/payout.service';
 import { getAgentId } from '../utils/role.util';
@@ -163,12 +164,15 @@ export const walletController = {
 
   /**
    * GET /api/admin/payouts/ready
-   * Get agents ready for payout
+   * Get agents ready for payout (grouped by plan)
    */
   async getAgentsReadyForPayout(req: Request, res: Response, next: NextFunction) {
     try {
-      const agents = await payoutService.getAgentsReadyForPayout();
-      res.json({ agents });
+      const { weekly, monthly } = await payoutService.getAgentsReadyForPayout();
+      res.json({ 
+        weekly: weekly.map(a => ({ agentId: a.agentId, balance: a.balance, nextPayoutDate: a.nextPayoutDate, agentName: a.agentName })),
+        monthly: monthly.map(a => ({ agentId: a.agentId, balance: a.balance, nextPayoutDate: a.nextPayoutDate, agentName: a.agentName })),
+      });
     } catch (error) {
       next(error);
     }
@@ -176,23 +180,40 @@ export const walletController = {
 
   /**
    * POST /api/admin/payouts/process
-   * Process weekly payout for an agent
+   * Process payout for an agent (automatically uses agent's payout plan)
    */
   async processPayout(req: Request, res: Response, next: NextFunction) {
     try {
-      const { agentId, paymentMethod, bankAccount, upiId, weekStart } = req.body;
+      const { agentId, paymentMethod, bankAccount, upiId, weekStart, monthStart } = req.body;
 
       if (!agentId || !paymentMethod) {
         throw new AppError('Agent ID and payment method are required', 400);
       }
 
-      const payout = await payoutService.processWeeklyPayout(
-        agentId,
-        paymentMethod,
-        bankAccount,
-        upiId,
-        weekStart ? new Date(weekStart) : undefined
-      );
+      // Get agent to check payout plan
+      const agent = await prisma.agent.findUnique({
+        where: { id: agentId },
+        select: { payoutPlan: true },
+      });
+
+      let payout;
+      if (agent?.payoutPlan === 'MONTHLY') {
+        payout = await payoutService.processMonthlyPayout(
+          agentId,
+          paymentMethod,
+          bankAccount,
+          upiId,
+          monthStart ? new Date(monthStart) : undefined
+        );
+      } else {
+        payout = await payoutService.processWeeklyPayout(
+          agentId,
+          paymentMethod,
+          bankAccount,
+          upiId,
+          weekStart ? new Date(weekStart) : undefined
+        );
+      }
 
       res.json({
         message: 'Payout processed successfully',
@@ -204,20 +225,37 @@ export const walletController = {
   },
 
   /**
-   * POST /api/admin/payouts/process-all
+   * POST /api/admin/payouts/process-all-weekly
    * Process weekly payouts for all eligible agents
    */
-  async processAllPayouts(req: Request, res: Response, next: NextFunction) {
+  async processAllWeeklyPayouts(req: Request, res: Response, next: NextFunction) {
     try {
       const { paymentMethod = 'BANK_TRANSFER' } = req.body;
 
-      const results = await payoutService.processAllWeeklyPayouts(paymentMethod);
+      const result = await payoutService.processAllWeeklyPayouts(paymentMethod);
 
       res.json({
-        message: 'Payout processing completed',
-        results,
-        totalProcessed: results.filter(r => r.success).length,
-        totalFailed: results.filter(r => !r.success).length,
+        message: 'Weekly payout processing completed',
+        ...result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * POST /api/admin/payouts/process-all-monthly
+   * Process monthly payouts for all eligible agents
+   */
+  async processAllMonthlyPayouts(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { paymentMethod = 'BANK_TRANSFER' } = req.body;
+
+      const result = await payoutService.processAllMonthlyPayouts(paymentMethod);
+
+      res.json({
+        message: 'Monthly payout processing completed',
+        ...result,
       });
     } catch (error) {
       next(error);

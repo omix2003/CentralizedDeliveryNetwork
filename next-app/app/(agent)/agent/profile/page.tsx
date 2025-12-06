@@ -44,6 +44,7 @@ export default function AgentProfilePage() {
     state: '',
     pincode: '',
     vehicleType: 'BIKE' as 'BIKE' | 'SCOOTER' | 'CAR' | 'BICYCLE',
+    payoutPlan: 'WEEKLY' as 'WEEKLY' | 'MONTHLY',
   });
   const [ratings, setRatings] = useState<AgentRating[]>([]);
   const [ratingsLoading, setRatingsLoading] = useState(false);
@@ -71,6 +72,7 @@ export default function AgentProfilePage() {
         state: data.state || '',
         pincode: data.pincode || '',
         vehicleType: (data.vehicleType as any) || 'BIKE',
+        payoutPlan: data.payoutPlan || 'WEEKLY',
       });
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to load profile');
@@ -348,6 +350,24 @@ export default function AgentProfilePage() {
                     <option value="BICYCLE">Bicycle</option>
                   </select>
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Payout Plan
+                  </label>
+                  <select
+                    value={formData.payoutPlan}
+                    onChange={(e) => setFormData({ ...formData, payoutPlan: e.target.value as 'WEEKLY' | 'MONTHLY' })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="WEEKLY">Weekly</option>
+                    <option value="MONTHLY">Monthly</option>
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {formData.payoutPlan === 'WEEKLY' 
+                      ? 'You will receive payouts every Monday' 
+                      : 'You will receive payouts on the 1st of each month'}
+                  </p>
+                </div>
               </div>
               <div className="flex gap-2">
                 <Button onClick={handleSaveProfile}>Save</Button>
@@ -358,6 +378,7 @@ export default function AgentProfilePage() {
                     state: profile.state || '',
                     pincode: profile.pincode || '',
                     vehicleType: (profile.vehicleType as any) || 'BIKE',
+                    payoutPlan: profile.payoutPlan || 'WEEKLY',
                   });
                 }}>
                   Cancel
@@ -389,6 +410,12 @@ export default function AgentProfilePage() {
                 <Car className="h-4 w-4 text-gray-400" />
                 <span className="font-medium">Vehicle:</span>
                 <span className="capitalize">{profile.vehicleType.toLowerCase()}</span>
+              </div>
+              <div className="flex items-center gap-2 text-gray-700">
+                <span className="font-medium">Payout Plan:</span>
+                <Badge variant={profile.payoutPlan === 'WEEKLY' ? 'default' : 'secondary'}>
+                  {profile.payoutPlan === 'WEEKLY' ? 'Weekly' : 'Monthly'}
+                </Badge>
               </div>
             </div>
           )}

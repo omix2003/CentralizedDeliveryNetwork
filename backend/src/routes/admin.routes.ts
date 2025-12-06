@@ -67,7 +67,8 @@ router.get('/wallet/transactions', walletController.getAdminWalletTransactions);
 router.get('/payouts', walletController.getAllPayouts);
 router.get('/payouts/ready', walletController.getAgentsReadyForPayout);
 router.post('/payouts/process', walletController.processPayout);
-router.post('/payouts/process-all', walletController.processAllPayouts);
+router.post('/payouts/process-all-weekly', walletController.processAllWeeklyPayouts);
+router.post('/payouts/process-all-monthly', walletController.processAllMonthlyPayouts);
 
 // ==================== SETTINGS ====================
 router.get('/settings', adminController.getSettings);

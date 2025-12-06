@@ -1,13 +1,22 @@
 import { prisma } from '../lib/prisma';
 import { walletService } from './wallet.service';
 
-export interface WeeklyPayoutSummary {
+export interface PayoutSummary {
   agentId: string;
   agentName: string;
   totalEarnings: number;
   periodStart: Date;
   periodEnd: Date;
   orderCount: number;
+  payoutPlan: 'WEEKLY' | 'MONTHLY';
+}
+
+export interface WeeklyPayoutSummary extends PayoutSummary {
+  payoutPlan: 'WEEKLY';
+}
+
+export interface MonthlyPayoutSummary extends PayoutSummary {
+  payoutPlan: 'MONTHLY';
 }
 
 export const payoutService = {
@@ -73,6 +82,7 @@ export const payoutService = {
       periodStart: startDate,
       periodEnd: endDate,
       orderCount: orders.length,
+      payoutPlan: 'WEEKLY',
     };
   },
 
@@ -170,9 +180,165 @@ export const payoutService = {
   },
 
   /**
-   * Get all agents ready for weekly payout (balance > 0, nextPayoutDate is today or past)
+   * Calculate monthly payout for an agent
+   * Month runs from 1st to last day of the month
    */
-  async getAgentsReadyForPayout(): Promise<Array<{ agentId: string; balance: number; nextPayoutDate: Date | null }>> {
+  async calculateMonthlyPayout(agentId: string, monthStart?: Date): Promise<MonthlyPayoutSummary> {
+    // Default to current month
+    const today = new Date();
+    const startDate = monthStart || new Date(today.getFullYear(), today.getMonth(), 1);
+    startDate.setHours(0, 0, 0, 0);
+    
+    const endDate = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    endDate.setHours(23, 59, 59, 999);
+
+    // Get agent info
+    const agent = await prisma.agent.findUnique({
+      where: { id: agentId },
+      include: {
+        user: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    });
+
+    if (!agent) {
+      throw new Error('Agent not found');
+    }
+
+    // Get wallet balance (this is the pending payout amount)
+    const wallet = await walletService.getAgentWallet(agentId);
+
+    // Count orders delivered in this month
+    const orders = await prisma.order.findMany({
+      where: {
+        agentId,
+        status: 'DELIVERED',
+        deliveredAt: {
+          gte: startDate,
+          lte: endDate,
+        },
+      },
+      select: {
+        id: true,
+        payoutAmount: true,
+      },
+    });
+
+    const totalEarnings = wallet.balance; // Current wallet balance is the payout amount
+
+    return {
+      agentId,
+      agentName: agent.user.name,
+      totalEarnings,
+      periodStart: startDate,
+      periodEnd: endDate,
+      orderCount: orders.length,
+      payoutPlan: 'MONTHLY',
+    };
+  },
+
+  /**
+   * Process monthly payout for an agent
+   */
+  async processMonthlyPayout(
+    agentId: string,
+    paymentMethod: 'BANK_TRANSFER' | 'UPI' | 'MOBILE_MONEY',
+    bankAccount?: string,
+    upiId?: string,
+    monthStart?: Date
+  ) {
+    const summary = await payoutService.calculateMonthlyPayout(agentId, monthStart);
+    
+    if (summary.totalEarnings <= 0) {
+      throw new Error('No earnings to payout');
+    }
+
+    // Check if payout already exists for this period
+    let existingPayout;
+    try {
+      existingPayout = await prisma.walletPayout.findUnique({
+        where: {
+          agentId_periodStart_periodEnd: {
+            agentId,
+            periodStart: summary.periodStart,
+            periodEnd: summary.periodEnd,
+          },
+        },
+      });
+    } catch (error: any) {
+      if (error?.code === 'P2021' || error?.code === '42P01' || error?.message?.includes('does not exist')) {
+        console.warn('⚠️  WalletPayout table does not exist - skipping duplicate check');
+        existingPayout = null;
+      } else {
+        throw error;
+      }
+    }
+
+    if (existingPayout) {
+      if (existingPayout.status === 'PROCESSED') {
+        throw new Error('Payout already processed for this period');
+      }
+      return await prisma.walletPayout.update({
+        where: { id: existingPayout.id },
+        data: {
+          amount: summary.totalEarnings,
+          status: 'PROCESSED',
+          paymentMethod,
+          bankAccount,
+          upiId,
+          processedAt: new Date(),
+        },
+      });
+    }
+
+    // Get agent wallet
+    const wallet = await walletService.getAgentWallet(agentId);
+
+    // Create payout record
+    const payout = await prisma.walletPayout.create({
+      data: {
+        agentWalletId: wallet.id,
+        agentId,
+        amount: summary.totalEarnings,
+        periodStart: summary.periodStart,
+        periodEnd: summary.periodEnd,
+        status: 'PROCESSED',
+        paymentMethod,
+        bankAccount,
+        upiId,
+        processedAt: new Date(),
+      },
+    });
+
+    // Debit agent wallet
+    await walletService.debitAgentWallet(
+      agentId,
+      summary.totalEarnings,
+      payout.id,
+      `Monthly payout for ${summary.periodStart.toLocaleDateString()} - ${summary.periodEnd.toLocaleDateString()}`
+    );
+
+    // Debit admin wallet
+    await walletService.debitAdminWallet(
+      summary.totalEarnings,
+      payout.id,
+      `Monthly payout to agent ${agentId.substring(0, 8).toUpperCase()}`
+    );
+
+    return payout;
+  },
+
+  /**
+   * Get all agents ready for payout (balance > 0, nextPayoutDate is today or past)
+   * Returns agents grouped by payout plan
+   */
+  async getAgentsReadyForPayout(): Promise<{
+    weekly: Array<{ agentId: string; balance: number; nextPayoutDate: Date | null; agentName: string }>;
+    monthly: Array<{ agentId: string; balance: number; nextPayoutDate: Date | null; agentName: string }>;
+  }> {
     try {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -185,32 +351,56 @@ export const payoutService = {
             { nextPayoutDate: null },
           ],
         },
-        select: {
-          agentId: true,
-          balance: true,
-          nextPayoutDate: true,
+        include: {
+          agent: {
+            include: {
+              user: {
+                select: {
+                  name: true,
+                },
+              },
+            },
+          },
         },
       });
 
-      return wallets;
+      const weekly: Array<{ agentId: string; balance: number; nextPayoutDate: Date | null; agentName: string }> = [];
+      const monthly: Array<{ agentId: string; balance: number; nextPayoutDate: Date | null; agentName: string }> = [];
+
+      for (const wallet of wallets) {
+        const agentData = {
+          agentId: wallet.agentId,
+          balance: wallet.balance,
+          nextPayoutDate: wallet.nextPayoutDate,
+          agentName: wallet.agent?.user?.name || 'Unknown',
+        };
+
+        if (wallet.agent?.payoutPlan === 'MONTHLY') {
+          monthly.push(agentData);
+        } else {
+          weekly.push(agentData);
+        }
+      }
+
+      return { weekly, monthly };
     } catch (error: any) {
-      // If table doesn't exist, return empty array
+      // If table doesn't exist, return empty arrays
       if (error?.code === 'P2021' || error?.code === '42P01' || error?.message?.includes('does not exist')) {
         console.warn('⚠️  AgentWallet table does not exist - returning empty results');
-        return [];
+        return { weekly: [], monthly: [] };
       }
       throw error;
     }
   },
 
   /**
-   * Process weekly payouts for all eligible agents (called on Monday)
+   * Process weekly payouts for all eligible agents
    */
   async processAllWeeklyPayouts(paymentMethod: 'BANK_TRANSFER' | 'UPI' | 'MOBILE_MONEY' = 'BANK_TRANSFER') {
-    const eligibleAgents = await payoutService.getAgentsReadyForPayout();
+    const { weekly } = await payoutService.getAgentsReadyForPayout();
     const results = [];
 
-    for (const agent of eligibleAgents) {
+    for (const agent of weekly) {
       try {
         const payout = await payoutService.processWeeklyPayout(
           agent.agentId,
@@ -222,7 +412,37 @@ export const payoutService = {
       }
     }
 
-    return results;
+    return {
+      totalProcessed: results.filter(r => r.success).length,
+      totalFailed: results.filter(r => !r.success).length,
+      results,
+    };
+  },
+
+  /**
+   * Process monthly payouts for all eligible agents
+   */
+  async processAllMonthlyPayouts(paymentMethod: 'BANK_TRANSFER' | 'UPI' | 'MOBILE_MONEY' = 'BANK_TRANSFER') {
+    const { monthly } = await payoutService.getAgentsReadyForPayout();
+    const results = [];
+
+    for (const agent of monthly) {
+      try {
+        const payout = await payoutService.processMonthlyPayout(
+          agent.agentId,
+          paymentMethod
+        );
+        results.push({ success: true, agentId: agent.agentId, payoutId: payout.id });
+      } catch (error: any) {
+        results.push({ success: false, agentId: agent.agentId, error: error.message });
+      }
+    }
+
+    return {
+      totalProcessed: results.filter(r => r.success).length,
+      totalFailed: results.filter(r => !r.success).length,
+      results,
+    };
   },
 
   /**

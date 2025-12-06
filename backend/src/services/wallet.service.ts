@@ -52,8 +52,16 @@ export const walletService = {
       });
       
       if (!wallet) {
-        // Calculate next Monday for weekly payout
-        const nextMonday = getNextMonday();
+        // Get agent to check payout plan
+        const agent = await prisma.agent.findUnique({
+          where: { id: agentId },
+          select: { payoutPlan: true },
+        });
+        
+        // Calculate next payout date based on plan
+        const nextPayoutDate = agent?.payoutPlan === 'MONTHLY' 
+          ? getNextMonthStart() 
+          : getNextMonday();
         
         wallet = await prisma.agentWallet.create({
           data: {
@@ -61,7 +69,7 @@ export const walletService = {
             balance: 0,
             totalEarned: 0,
             totalPaidOut: 0,
-            nextPayoutDate: nextMonday,
+            nextPayoutDate: nextPayoutDate,
           },
         });
       }
@@ -322,7 +330,7 @@ export const walletService = {
 };
 
 /**
- * Get next Monday date
+ * Get next Monday date (for weekly payouts)
  */
 function getNextMonday(): Date {
   const today = new Date();
@@ -332,6 +340,23 @@ function getNextMonday(): Date {
   nextMonday.setDate(today.getDate() + daysUntilMonday);
   nextMonday.setHours(0, 0, 0, 0);
   return nextMonday;
+}
+
+/**
+ * Get next month start date (1st of next month, for monthly payouts)
+ */
+function getNextMonthStart(): Date {
+  const today = new Date();
+  const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+  nextMonth.setHours(0, 0, 0, 0);
+  return nextMonth;
+}
+
+/**
+ * Get next payout date based on payout plan
+ */
+function getNextPayoutDate(payoutPlan: 'WEEKLY' | 'MONTHLY'): Date {
+  return payoutPlan === 'MONTHLY' ? getNextMonthStart() : getNextMonday();
 }
 
 

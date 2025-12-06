@@ -4,6 +4,7 @@ export interface AgentProfile {
   id: string;
   status: string;
   vehicleType: string;
+  payoutPlan?: 'WEEKLY' | 'MONTHLY';
   city?: string;
   state?: string;
   pincode?: string;
@@ -35,6 +36,7 @@ export interface UpdateProfileData {
   state?: string;
   pincode?: string;
   vehicleType?: 'BIKE' | 'SCOOTER' | 'CAR' | 'BICYCLE';
+  payoutPlan?: 'WEEKLY' | 'MONTHLY';
 }
 
 export const agentApi = {
@@ -156,30 +158,7 @@ export const agentApi = {
     return response.data;
   },
 
-  // Payment endpoints
-  getPayments: async (params?: { page?: number; limit?: number }) => {
-    const response = await apiClient.get('/agent/payments', { params });
-    return response.data;
-  },
-
-  getPaymentSummary: async () => {
-    const response = await apiClient.get('/agent/payments/summary');
-    return response.data;
-  },
-
-  getPayrolls: async (params?: { page?: number; limit?: number }) => {
-    const response = await apiClient.get('/agent/payrolls', { params });
-    return response.data;
-  },
-
-  calculatePayroll: async (data: {
-    periodStart: string;
-    periodEnd: string;
-    periodType: 'DAILY' | 'WEEKLY' | 'MONTHLY';
-  }) => {
-    const response = await apiClient.post('/agent/payrolls/calculate', data);
-    return response.data;
-  },
+  // Payment endpoints - REMOVED: Agents now see earnings directly in wallet
 
   // Schedule endpoints
   setSchedule: async (data: {
@@ -351,45 +330,7 @@ export interface AgentOrder {
   };
 }
 
-export interface Payment {
-  id: string;
-  agentId: string;
-  orderId: string;
-  amount: number;
-  paymentType: string;
-  status: 'PENDING' | 'PROCESSED' | 'FAILED';
-  processedAt?: string;
-  paymentMethod?: string;
-  transactionId?: string;
-  notes?: string;
-  createdAt: string;
-  order?: {
-    id: string;
-    status: string;
-    deliveredAt?: string;
-  };
-}
-
-export interface Payroll {
-  id: string;
-  agentId: string;
-  periodStart: string;
-  periodEnd: string;
-  periodType: 'DAILY' | 'WEEKLY' | 'MONTHLY';
-  totalEarnings: number;
-  totalOrders: number;
-  basePay: number;
-  bonuses: number;
-  deductions: number;
-  netPay: number;
-  status: 'PENDING' | 'PROCESSED' | 'PAID' | 'FAILED';
-  processedAt?: string;
-  paidAt?: string;
-  paymentMethod?: string;
-  transactionId?: string;
-  notes?: string;
-  createdAt: string;
-}
+// Payment and Payroll interfaces removed - agents now see earnings directly in wallet
 
 export interface AgentSchedule {
   id: string;
@@ -427,10 +368,5 @@ export interface VerificationData {
   isExpired: boolean;
 }
 
-export interface PaymentSummary {
-  today: { amount: number; count: number };
-  week: { amount: number; count: number };
-  month: { amount: number; count: number };
-  pending: { amount: number; count: number };
-}
+// PaymentSummary interface removed - agents now see earnings directly in wallet
 

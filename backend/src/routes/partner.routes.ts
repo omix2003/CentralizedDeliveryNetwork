@@ -3,7 +3,7 @@ import { authenticate } from '../middleware/auth.middleware';
 import { requirePartner } from '../middleware/role.middleware';
 import { validate } from '../middleware/validation.middleware';
 import { partnerController } from '../controllers/partner.controller';
-import { revenueController } from '../controllers/revenue.controller';
+import { partnerPayoutController } from '../controllers/partner-payout.controller';
 import { updateWebhookSchema, createOrderSchema, updateOrderSchema } from '../utils/validation.schemas';
 
 const router = Router();
@@ -32,8 +32,8 @@ router.get('/analytics/heatmap', partnerController.getOrderHeatmap);
 router.get('/support/tickets', partnerController.getSupportTickets);
 router.post('/support/tickets', partnerController.createSupportTicket);
 
-// Revenue routes
-router.get('/revenue/summary', revenueController.getPartnerRevenueSummary);
-router.get('/revenue', revenueController.getPartnerRevenue);
+// Payout routes (partners track payouts, not revenue)
+router.get('/payouts/summary', partnerPayoutController.getPayoutSummary);
+router.get('/payouts', partnerPayoutController.getPayouts);
 
 export default router;

@@ -166,22 +166,32 @@ export const partnerController = {
         estimatedDuration,
       } = req.body;
 
-      // Validate commission rate based on order type
-      let finalCommissionRate = commissionRate;
-      if (!finalCommissionRate) {
-        // Default commission rates
-        finalCommissionRate = orderType === 'B2B_BULK' ? 10 : 20; // 10% for B2B, 20% for ON_DEMAND
+      // Business Rules: Partner Payment = 100%, Agent = 70%, Admin = 30%
+      // If orderAmount is provided, payoutAmount should be 70% of it
+      // If payoutAmount is provided, orderAmount should be payoutAmount / 0.70
+      let finalOrderAmount: number;
+      let finalPayoutAmount: number;
+      
+      if (orderAmount && payoutAmount) {
+        // Both provided - use orderAmount as source of truth, recalculate payoutAmount to 70%
+        finalOrderAmount = orderAmount;
+        finalPayoutAmount = orderAmount * 0.70; // Agent gets 70%
+      } else if (orderAmount) {
+        // Only orderAmount provided - calculate payoutAmount (70% of orderAmount)
+        finalOrderAmount = orderAmount;
+        finalPayoutAmount = orderAmount * 0.70;
+      } else if (payoutAmount) {
+        // Only payoutAmount provided - calculate orderAmount (payoutAmount / 0.70)
+        finalPayoutAmount = payoutAmount;
+        finalOrderAmount = payoutAmount / 0.70; // Partner pays 100%, agent gets 70%
       } else {
-        // Validate commission rate is within allowed range
-        if (orderType === 'B2B_BULK') {
-          finalCommissionRate = Math.max(8, Math.min(12, finalCommissionRate)); // 8-12% for B2B
-        } else {
-          finalCommissionRate = Math.max(15, Math.min(30, finalCommissionRate)); // 15-30% for ON_DEMAND
-        }
+        return res.status(400).json({ 
+          error: 'Either orderAmount or payoutAmount must be provided' 
+        });
       }
 
-      // Calculate order amount if not provided (default: payoutAmount * 1.25 for 25% partner markup)
-      const finalOrderAmount = orderAmount || (payoutAmount * 1.25);
+      // Commission rate is fixed at 30% (stored for reference)
+      const finalCommissionRate = 30;
 
       // Create order first (barcode/QR will be generated after)
       // Try with all fields first, fallback to basic fields if columns don't exist
@@ -194,7 +204,7 @@ export const partnerController = {
             pickupLng,
             dropLat,
             dropLng,
-            payoutAmount,
+            payoutAmount: finalPayoutAmount,
             orderAmount: finalOrderAmount,
             orderType: orderType as 'ON_DEMAND' | 'B2B_BULK',
             commissionRate: finalCommissionRate,
@@ -244,7 +254,7 @@ export const partnerController = {
                 pickupLng,
                 dropLat,
                 dropLng,
-                payoutAmount,
+                payoutAmount: finalPayoutAmount,
                 priority,
                 estimatedDuration,
                 status: 'SEARCHING_AGENT',
@@ -285,7 +295,7 @@ export const partnerController = {
                   pickupLng,
                   dropLat,
                   dropLng,
-                  payoutAmount,
+                  payoutAmount: finalPayoutAmount,
                   status: 'SEARCHING_AGENT',
                 },
                 select: {
@@ -571,115 +581,53 @@ export const partnerController = {
       let barcode = null;
       let qrCode = null;
       
-      try {
-        // First try with barcode/qrCode included
-        order = await prisma.order.findFirst({
-          where: {
-            id: orderId,
-            partnerId, // Ensure partner owns this order
-          },
-          select: {
-            id: true,
-            status: true,
-            pickupLat: true,
-            pickupLng: true,
-            dropLat: true,
-            dropLng: true,
-            payoutAmount: true,
-            priority: true,
-            estimatedDuration: true,
-            actualDuration: true,
-            assignedAt: true,
-            pickedUpAt: true,
-            deliveredAt: true,
-            cancelledAt: true,
-            cancellationReason: true,
-            createdAt: true,
-            updatedAt: true,
-            barcode: true,
-            qrCode: true,
-            agent: {
-              select: {
-                id: true,
-                vehicleType: true,
-                rating: true,
-                user: {
-                  select: {
-                    id: true,
-                    name: true,
-                    email: true,
-                    phone: true,
-                  },
-                },
-              },
-            },
-            partner: {
-              select: {
-                id: true,
-                companyName: true,
-              },
-            },
-          },
-        });
-        
-        if (order) {
-          barcode = order.barcode;
-          qrCode = order.qrCode;
-        }
-      } catch (error: any) {
-        // If barcode/qrCode columns don't exist, try without them
-        if (error.message?.includes('barcode') || error.message?.includes('qrCode')) {
-          console.warn('[Partner] Barcode/QR code columns not found, fetching without them');
-          order = await prisma.order.findFirst({
-            where: {
-              id: orderId,
-              partnerId,
-            },
+      // Fetch order without barcode/qrCode to avoid errors if columns don't exist
+      order = await prisma.order.findFirst({
+        where: {
+          id: orderId,
+          partnerId, // Ensure partner owns this order
+        },
+        select: {
+          id: true,
+          status: true,
+          pickupLat: true,
+          pickupLng: true,
+          dropLat: true,
+          dropLng: true,
+          payoutAmount: true,
+          priority: true,
+          estimatedDuration: true,
+          actualDuration: true,
+          assignedAt: true,
+          pickedUpAt: true,
+          deliveredAt: true,
+          cancelledAt: true,
+          cancellationReason: true,
+          createdAt: true,
+          updatedAt: true,
+          agent: {
             select: {
               id: true,
-              status: true,
-              pickupLat: true,
-              pickupLng: true,
-              dropLat: true,
-              dropLng: true,
-              payoutAmount: true,
-              priority: true,
-              estimatedDuration: true,
-              actualDuration: true,
-              assignedAt: true,
-              pickedUpAt: true,
-              deliveredAt: true,
-              cancelledAt: true,
-              cancellationReason: true,
-              createdAt: true,
-              updatedAt: true,
-              agent: {
+              vehicleType: true,
+              rating: true,
+              user: {
                 select: {
                   id: true,
-                  vehicleType: true,
-                  rating: true,
-                  user: {
-                    select: {
-                      id: true,
-                      name: true,
-                      email: true,
-                      phone: true,
-                    },
-                  },
-                },
-              },
-              partner: {
-                select: {
-                  id: true,
-                  companyName: true,
+                  name: true,
+                  email: true,
+                  phone: true,
                 },
               },
             },
-          });
-        } else {
-          throw error;
-        }
-      }
+          },
+          partner: {
+            select: {
+              id: true,
+              companyName: true,
+            },
+          },
+        },
+      });
 
       if (!order) {
         return res.status(404).json({ error: 'Order not found' });
@@ -728,49 +676,57 @@ export const partnerController = {
         console.warn('[Partner] Error calculating timing:', error.message);
       }
 
-      // If barcode/qrCode weren't fetched in main query, try to get them separately
-      if (barcode === undefined && qrCode === undefined) {
+      // Try to get barcode/qrCode only if columns exist (check via raw query first)
+      // Check if barcode column exists before trying to fetch
+      try {
+        await prisma.$queryRaw`SELECT "barcode" FROM "Order" LIMIT 1`;
+        // Column exists, try to fetch barcode/qrCode
         try {
-          const orderWithCodes = await prisma.order.findUnique({
-            where: { id: orderId },
-            select: {
-              barcode: true,
-              qrCode: true,
-            },
-          });
-          barcode = orderWithCodes?.barcode || null;
-          qrCode = orderWithCodes?.qrCode || null;
-        } catch (error: any) {
-          // Columns might not exist, that's okay
-          console.warn('[Partner] Could not fetch barcode/qrCode:', error.message);
-          barcode = null;
-          qrCode = null;
+          const orderWithCodes = await prisma.$queryRaw<Array<{ barcode: string | null; qrCode: string | null }>>`
+            SELECT "barcode", "qrCode" FROM "Order" WHERE "id" = ${orderId} LIMIT 1
+          `;
+          if (orderWithCodes && orderWithCodes.length > 0) {
+            barcode = orderWithCodes[0].barcode;
+            qrCode = orderWithCodes[0].qrCode;
+          }
+        } catch (fetchError: any) {
+          // Failed to fetch, that's okay
+          console.warn('[Partner] Could not fetch barcode/qrCode:', fetchError.message);
         }
+      } catch (checkError: any) {
+        // Column doesn't exist, skip barcode/qrCode entirely
+        console.warn('[Partner] Barcode/QR code columns do not exist in database. Migration may need to run.');
+        barcode = null;
+        qrCode = null;
       }
       
-      // If barcode/qrCode are null or missing, try to generate them
-      if (order && (!barcode || !qrCode)) {
+      // If barcode/qrCode are null and columns exist, try to generate them
+      if (order && barcode === null && qrCode === null) {
         try {
+          // Check again if columns exist before trying to generate
+          await prisma.$queryRaw`SELECT "barcode" FROM "Order" LIMIT 1`;
           const { barcodeService } = await import('../services/barcode.service');
           await barcodeService.assignBarcodeToOrder(order.id);
-          // Fetch again after assignment
+          // Fetch again after assignment using raw query
           try {
-            const orderWithCodes = await prisma.order.findUnique({
-              where: { id: orderId },
-              select: {
-                barcode: true,
-                qrCode: true,
-              },
-            });
-            if (orderWithCodes) {
-              barcode = orderWithCodes.barcode || barcode;
-              qrCode = orderWithCodes.qrCode || qrCode;
+            const orderWithCodes = await prisma.$queryRaw<Array<{ barcode: string | null; qrCode: string | null }>>`
+              SELECT "barcode", "qrCode" FROM "Order" WHERE "id" = ${orderId} LIMIT 1
+            `;
+            if (orderWithCodes && orderWithCodes.length > 0) {
+              barcode = orderWithCodes[0].barcode;
+              qrCode = orderWithCodes[0].qrCode;
             }
           } catch (fetchError: any) {
+            // Failed to fetch after generation, that's okay
             console.warn('[Partner] Could not fetch barcode/qrCode after generation:', fetchError.message);
           }
         } catch (error: any) {
-          console.warn('[Partner] Could not generate barcode/qrCode:', error.message);
+          // Columns don't exist or generation failed, that's okay
+          if (error.message?.includes('does not exist') || error.code === 'P2021' || error.code === 'P2022') {
+            console.warn('[Partner] Barcode/QR code columns do not exist. Skipping generation.');
+          } else {
+            console.warn('[Partner] Could not generate barcode/qrCode:', error.message);
+          }
         }
       }
 
@@ -846,22 +802,32 @@ export const partnerController = {
         estimatedDuration,
       } = req.body;
 
-      // Validate commission rate based on order type
-      let finalCommissionRate = commissionRate;
-      if (!finalCommissionRate) {
-        // Default commission rates
-        finalCommissionRate = orderType === 'B2B_BULK' ? 10 : 20; // 10% for B2B, 20% for ON_DEMAND
+      // Business Rules: Partner Payment = 100%, Agent = 70%, Admin = 30%
+      // If orderAmount is provided, payoutAmount should be 70% of it
+      // If payoutAmount is provided, orderAmount should be payoutAmount / 0.70
+      let finalOrderAmount: number;
+      let finalPayoutAmount: number;
+      
+      if (orderAmount && payoutAmount) {
+        // Both provided - use orderAmount as source of truth, recalculate payoutAmount to 70%
+        finalOrderAmount = orderAmount;
+        finalPayoutAmount = orderAmount * 0.70; // Agent gets 70%
+      } else if (orderAmount) {
+        // Only orderAmount provided - calculate payoutAmount (70% of orderAmount)
+        finalOrderAmount = orderAmount;
+        finalPayoutAmount = orderAmount * 0.70;
+      } else if (payoutAmount) {
+        // Only payoutAmount provided - calculate orderAmount (payoutAmount / 0.70)
+        finalPayoutAmount = payoutAmount;
+        finalOrderAmount = payoutAmount / 0.70; // Partner pays 100%, agent gets 70%
       } else {
-        // Validate commission rate is within allowed range
-        if (orderType === 'B2B_BULK') {
-          finalCommissionRate = Math.max(8, Math.min(12, finalCommissionRate)); // 8-12% for B2B
-        } else {
-          finalCommissionRate = Math.max(15, Math.min(30, finalCommissionRate)); // 15-30% for ON_DEMAND
-        }
+        return res.status(400).json({ 
+          error: 'Either orderAmount or payoutAmount must be provided' 
+        });
       }
 
-      // Calculate order amount if not provided (default: payoutAmount * 1.25 for 25% partner markup)
-      const finalOrderAmount = orderAmount || (payoutAmount * 1.25);
+      // Commission rate is fixed at 30% (stored for reference)
+      const finalCommissionRate = 30;
 
       // Create order first
       // Try with all fields first, fallback to basic fields if columns don't exist
@@ -874,7 +840,7 @@ export const partnerController = {
             pickupLng,
             dropLat,
             dropLng,
-            payoutAmount,
+            payoutAmount: finalPayoutAmount,
             orderAmount: finalOrderAmount,
             orderType: orderType as 'ON_DEMAND' | 'B2B_BULK',
             commissionRate: finalCommissionRate,

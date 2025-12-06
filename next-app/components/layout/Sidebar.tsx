@@ -42,7 +42,7 @@ interface SidebarProps {
 const agentNavItems: NavItem[] = [
   { label: 'Dashboard', href: '/agent/dashboard', icon: LayoutDashboard },
   { label: 'Orders', href: '/agent/orders', icon: Package },
-  { label: 'Payments', href: '/agent/payments', icon: DollarSign },
+  // Payments removed - agents see earnings directly in wallet
   { label: 'Wallet', href: '/agent/wallet', icon: Wallet },
   { label: 'Calendar', href: '/agent/calendar', icon: Calendar },
   { label: 'Scan', href: '/agent/scan', icon: ScanLine },
@@ -53,7 +53,7 @@ const agentNavItems: NavItem[] = [
 const partnerNavItems: NavItem[] = [
   { label: 'Dashboard', href: '/partner/dashboard', icon: LayoutDashboard },
   { label: 'Orders', href: '/partner/orders', icon: Package },
-  { label: 'Revenue', href: '/partner/revenue', icon: DollarSign },
+  { label: 'Payouts', href: '/partner/revenue', icon: DollarSign },
   { label: 'Tracking', href: '/partner/tracking', icon: MapPin },
   { label: 'Analytics', href: '/partner/analytics', icon: BarChart3 },
   { label: 'Settings', href: '/partner/settings', icon: Settings },

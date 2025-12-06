@@ -28,6 +28,11 @@ enum AgentStatus {
   ON_TRIP
 }
 
+enum PayoutPlan {
+  WEEKLY
+  MONTHLY
+}
+
 enum OrderStatus {
   SEARCHING_AGENT
   ASSIGNED
@@ -98,6 +103,7 @@ model Agent {
   userId          String      @unique
   vehicleType     VehicleType
   status          AgentStatus @default(OFFLINE)
+  payoutPlan      PayoutPlan  @default(WEEKLY) // Weekly or Monthly payout plan
   rating          Float?      @default(0)
   totalOrders     Int         @default(0)
   completedOrders Int         @default(0)

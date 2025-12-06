@@ -209,23 +209,42 @@ export const partnerApi = {
     return response.data;
   },
 
-  // Revenue endpoints
-  getRevenueSummary: async (startDate?: string, endDate?: string): Promise<RevenueSummary> => {
+  // Payout endpoints (partners track payouts, not revenue)
+  getPayoutSummary: async (startDate?: string, endDate?: string): Promise<{
+    totalPayouts: number;
+    totalOrders: number;
+    completedOrders: number;
+    averageOrderValue: number;
+  }> => {
     const params: any = {};
     if (startDate) params.startDate = startDate;
     if (endDate) params.endDate = endDate;
-    const response = await apiClient.get<RevenueSummary>('/partner/revenue/summary', { params });
+    const response = await apiClient.get('/partner/payouts/summary', { params });
     return response.data;
   },
 
-  getRevenue: async (params?: {
+  getPayouts: async (params?: {
     startDate?: string;
     endDate?: string;
-    periodType?: 'DAILY' | 'WEEKLY' | 'MONTHLY';
     page?: number;
     limit?: number;
-  }): Promise<RevenueResponse> => {
-    const response = await apiClient.get<RevenueResponse>('/partner/revenue', { params });
+  }): Promise<{
+    payouts: Array<{
+      id: string;
+      orderId: string;
+      amount: number;
+      agentPayout: number;
+      platformFee: number;
+      deliveredAt: string | null;
+      createdAt: string;
+      agent: { id: string; user: { name: string } } | null;
+    }>;
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }> => {
+    const response = await apiClient.get('/partner/payouts', { params });
     return response.data;
   },
 };

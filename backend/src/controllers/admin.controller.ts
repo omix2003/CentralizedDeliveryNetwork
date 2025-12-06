@@ -2557,15 +2557,21 @@ export const adminController = {
   async syncWalletAndRevenue(req: Request, res: Response, next: NextFunction) {
     try {
       // Import and run the sync function
-      const { syncWalletAndRevenue } = await import('../scripts/sync-wallet-revenue');
+      const syncModule = await import('../scripts/sync-wallet-revenue');
+      const { syncWalletAndRevenue } = syncModule;
+      
+      if (!syncWalletAndRevenue) {
+        throw new Error('Sync function not found in module');
+      }
       
       // Run sync in background and return immediately
       syncWalletAndRevenue()
         .then(() => {
-          console.log('[Admin] Wallet and revenue synchronization completed');
+          console.log('[Admin] Wallet and revenue synchronization completed successfully');
         })
         .catch((error: any) => {
           console.error('[Admin] Wallet and revenue synchronization failed:', error);
+          console.error('[Admin] Error stack:', error?.stack);
         });
 
       res.json({
@@ -2574,9 +2580,11 @@ export const adminController = {
       });
     } catch (error: any) {
       console.error('[Admin] Error starting sync:', error);
+      console.error('[Admin] Error stack:', error?.stack);
       res.status(500).json({
         error: 'Failed to start synchronization',
-        message: error.message,
+        message: error?.message || 'Unknown error',
+        details: process.env.NODE_ENV === 'development' ? error?.stack : undefined,
       });
     }
   },

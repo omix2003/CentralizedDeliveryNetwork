@@ -21,7 +21,11 @@ export interface RevenueSummary {
 export const revenueService = {
   /**
    * Calculate revenue for a delivered order
-   * Platform fee is typically 10-15% of order amount or a fixed fee
+   * Business Rules:
+   * - partnerPayment = total fee the partner pays for that order (orderAmount) = 100%
+   * - agentPayout = 70% of partnerPayment
+   * - adminCommission = 30% of partnerPayment
+   * - Formula: adminCommission = partnerPayment - agentPayout
    */
   calculateOrderRevenue: async (orderId: string): Promise<RevenueCalculation> => {
     const order = await prisma.order.findUnique({
@@ -36,56 +40,48 @@ export const revenueService = {
       throw new Error('Order must be delivered to calculate revenue');
     }
 
-    // Order amount (what partner charges customer)
-    // If not set, use payoutAmount * 1.25 as default (assuming 25% markup for partner)
-    const orderAmount = order.orderAmount || (order.payoutAmount * 1.25);
+    // Partner payment = what partner pays for the order (100%)
+    // If orderAmount is not set, calculate from payoutAmount (payoutAmount is 70% of orderAmount)
+    // So: orderAmount = payoutAmount / 0.70
+    let partnerPayment = order.orderAmount || 0;
+    if (!partnerPayment && order.payoutAmount) {
+      partnerPayment = order.payoutAmount / 0.70;
+    }
     
-    // Delivery fee (what partner pays to agent) = base payment
-    const deliveryFee = order.payoutAmount;
-
-    // Determine order type (default to ON_DEMAND)
-    const orderType = (order.orderType as 'ON_DEMAND' | 'B2B_BULK') || 'ON_DEMAND';
-
-    // Calculate platform commission based on order type
-    let commissionRate = 0;
-    if (order.commissionRate) {
-      // Use specified commission rate
-      commissionRate = order.commissionRate;
-    } else {
-      // Default commission rates based on order type
-      if (orderType === 'B2B_BULK') {
-        commissionRate = 10; // 10% for B2B bulk deliveries
+    // If still no partnerPayment, default to a minimum (this shouldn't happen in production)
+    if (!partnerPayment || partnerPayment <= 0) {
+      console.warn(`[Revenue Service] Order ${orderId.substring(0, 8)} has no orderAmount or payoutAmount. Using default calculation.`);
+      // Try to use payoutAmount if available, otherwise use a default
+      if (order.payoutAmount && order.payoutAmount > 0) {
+        partnerPayment = order.payoutAmount / 0.70;
       } else {
-        commissionRate = 20; // 20% for on-demand deliveries
+        throw new Error(`Order ${orderId.substring(0, 8)} has no valid orderAmount or payoutAmount`);
       }
     }
+    
+    // Agent payout = 70% of partnerPayment
+    // Use the actual payoutAmount from order, or calculate as 70% of partnerPayment
+    const agentPayout = order.payoutAmount || (partnerPayment * 0.70);
 
-    // Ensure commission rate is within valid range
-    if (orderType === 'B2B_BULK') {
-      // B2B: 8-12%
-      commissionRate = Math.max(8, Math.min(12, commissionRate));
-    } else {
-      // ON_DEMAND: 15-30%
-      commissionRate = Math.max(15, Math.min(30, commissionRate));
-    }
+    // Admin commission = 30% of partnerPayment (or partnerPayment - agentPayout)
+    const adminCommission = partnerPayment - agentPayout;
 
-    // Calculate platform fee (commission)
-    // Commission is calculated on the order amount (what customer pays)
-    const platformFee = (orderAmount * commissionRate) / 100;
-
-    // Partner net revenue = orderAmount - deliveryFee - platformFee
-    const partnerNetRevenue = orderAmount - deliveryFee - platformFee;
+    // Ensure the split is correct (70/30)
+    // If there's a discrepancy, recalculate based on partnerPayment
+    const expectedAgentPayout = partnerPayment * 0.70;
+    const expectedAdminCommission = partnerPayment * 0.30;
 
     return {
-      orderAmount,
-      deliveryFee,
-      platformFee,
-      netRevenue: partnerNetRevenue, // For partner
+      orderAmount: partnerPayment,           // What partner pays (100%)
+      deliveryFee: expectedAgentPayout,      // What agent gets (70%)
+      platformFee: expectedAdminCommission, // What admin/platform gets (30%)
+      netRevenue: 0,                         // Partner doesn't earn, they pay
     };
   },
 
   /**
    * Create partner revenue record
+   * Note: Partner PAYS for orders, they don't earn revenue
    */
   createPartnerRevenue: async (
     partnerId: string,
@@ -95,12 +91,6 @@ export const revenueService = {
     periodType: 'DAILY' | 'WEEKLY' | 'MONTHLY'
   ) => {
     const calculation = await revenueService.calculateOrderRevenue(orderId);
-    
-    // Get order details for commission rate
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
-      select: { commissionRate: true, orderType: true },
-    });
 
     // Check if revenue record already exists
     const existing = await prisma.partnerRevenue.findUnique({
@@ -111,10 +101,10 @@ export const revenueService = {
       return await prisma.partnerRevenue.update({
         where: { id: existing.id },
         data: {
-          orderAmount: calculation.orderAmount,
-          deliveryFee: calculation.deliveryFee,
-          platformFee: calculation.platformFee,
-          netRevenue: calculation.netRevenue,
+          orderAmount: calculation.orderAmount,      // What partner paid
+          deliveryFee: calculation.deliveryFee,      // What agent got
+          platformFee: calculation.platformFee,      // What platform got
+          netRevenue: -calculation.orderAmount,      // Negative (partner pays, doesn't earn)
           status: 'PROCESSED',
           processedAt: new Date(),
         },
@@ -125,10 +115,10 @@ export const revenueService = {
       data: {
         partnerId,
         orderId,
-        orderAmount: calculation.orderAmount,
-        deliveryFee: calculation.deliveryFee,
-        platformFee: calculation.platformFee,
-        netRevenue: calculation.netRevenue,
+        orderAmount: calculation.orderAmount,      // What partner paid
+        deliveryFee: calculation.deliveryFee,      // What agent got
+        platformFee: calculation.platformFee,      // What platform got
+        netRevenue: -calculation.orderAmount,      // Negative (partner pays, doesn't earn)
         periodStart,
         periodEnd,
         periodType,
@@ -140,6 +130,7 @@ export const revenueService = {
 
   /**
    * Create platform revenue record
+   * Admin commission = partnerPayment - agentPayout
    */
   createPlatformRevenue: async (
     orderId: string,
@@ -160,10 +151,10 @@ export const revenueService = {
       return await prisma.platformRevenue.update({
         where: { id: existing.id },
         data: {
-          orderAmount: calculation.orderAmount,
-          platformFee: calculation.platformFee,
-          agentPayout: calculation.deliveryFee,
-          netRevenue: calculation.platformFee, // Platform keeps the fee
+          orderAmount: calculation.orderAmount,      // Partner payment
+          platformFee: calculation.platformFee,      // Admin commission (partnerPayment - agentPayout)
+          agentPayout: calculation.deliveryFee,      // Agent payout
+          netRevenue: calculation.platformFee,       // Platform keeps the commission
           status: 'PROCESSED',
           processedAt: new Date(),
         },
@@ -175,10 +166,10 @@ export const revenueService = {
         orderId,
         partnerId,
         agentId: agentId || null,
-        orderAmount: calculation.orderAmount,
-        platformFee: calculation.platformFee,
-        agentPayout: calculation.deliveryFee,
-        netRevenue: calculation.platformFee, // Platform keeps the fee
+        orderAmount: calculation.orderAmount,      // Partner payment
+        platformFee: calculation.platformFee,      // Admin commission (partnerPayment - agentPayout)
+        agentPayout: calculation.deliveryFee,      // Agent payout
+        netRevenue: calculation.platformFee,       // Platform keeps the commission
         revenueType: 'COMMISSION',
         periodStart,
         periodEnd,

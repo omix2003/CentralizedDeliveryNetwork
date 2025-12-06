@@ -34,7 +34,10 @@ export function AdminWallet() {
   } | null>(null);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [payouts, setPayouts] = useState<WalletPayout[]>([]);
-  const [readyAgents, setReadyAgents] = useState<any[]>([]);
+  const [readyAgents, setReadyAgents] = useState<{
+    weekly: Array<{ agentId: string; balance: number; nextPayoutDate: string | null; agentName: string }>;
+    monthly: Array<{ agentId: string; balance: number; nextPayoutDate: string | null; agentName: string }>;
+  }>({ weekly: [], monthly: [] });
   const [loading, setLoading] = useState(true);
   const [loadingTransactions, setLoadingTransactions] = useState(false);
   const [loadingPayouts, setLoadingPayouts] = useState(false);
@@ -103,7 +106,7 @@ export function AdminWallet() {
       setLoadingReady(true);
       setError(null);
       const data = await adminApi.getAgentsReadyForPayout();
-      setReadyAgents(data.agents);
+      setReadyAgents({ weekly: data.weekly || [], monthly: data.monthly || [] });
     } catch (err: any) {
       setError(err.response?.data?.message || err.message || 'Failed to load ready agents');
     } finally {
@@ -111,23 +114,45 @@ export function AdminWallet() {
     }
   };
 
-  const handleProcessAllPayouts = async () => {
+  const handleProcessAllWeeklyPayouts = async () => {
     if (!confirm('Process weekly payouts for all eligible agents? This will transfer funds from admin wallet to agent wallets.')) {
       return;
     }
 
     try {
       setProcessing(true);
-      const result = await adminApi.processAllPayouts('BANK_TRANSFER');
+      const result = await adminApi.processAllWeeklyPayouts('BANK_TRANSFER');
       showToast(
         result.totalFailed > 0 ? 'warning' : 'success',
-        `Successfully processed ${result.totalProcessed} payouts. ${result.totalFailed > 0 ? `${result.totalFailed} failed.` : ''}`
+        `Successfully processed ${result.totalProcessed} weekly payouts. ${result.totalFailed > 0 ? `${result.totalFailed} failed.` : ''}`
       );
       loadWallet();
       loadPayouts();
       loadReadyAgents();
     } catch (err: any) {
-      showToast('error', err.message || 'Failed to process payouts');
+      showToast('error', err.message || 'Failed to process weekly payouts');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleProcessAllMonthlyPayouts = async () => {
+    if (!confirm('Process monthly payouts for all eligible agents? This will transfer funds from admin wallet to agent wallets.')) {
+      return;
+    }
+
+    try {
+      setProcessing(true);
+      const result = await adminApi.processAllMonthlyPayouts('BANK_TRANSFER');
+      showToast(
+        result.totalFailed > 0 ? 'warning' : 'success',
+        `Successfully processed ${result.totalProcessed} monthly payouts. ${result.totalFailed > 0 ? `${result.totalFailed} failed.` : ''}`
+      );
+      loadWallet();
+      loadPayouts();
+      loadReadyAgents();
+    } catch (err: any) {
+      showToast('error', err.message || 'Failed to process monthly payouts');
     } finally {
       setProcessing(false);
     }
@@ -222,7 +247,7 @@ export function AdminWallet() {
                 <p className="text-3xl font-bold text-gray-900">
                   {formatCurrency(wallet?.totalDeposited || 0)}
                 </p>
-                <p className="text-xs text-gray-500 mt-2">All time revenue</p>
+                <p className="text-xs text-gray-500 mt-2">Platform commissions (30% per order)</p>
               </>
             )}
           </CardContent>
@@ -264,26 +289,26 @@ export function AdminWallet() {
                 <p className="text-3xl font-bold text-gray-900">
                   {formatCurrency((wallet?.totalDeposited || 0) - (wallet?.totalPaidOut || 0))}
                 </p>
-                <p className="text-xs text-gray-500 mt-2">Platform profit</p>
+                <p className="text-xs text-gray-500 mt-2">Commissions - Agent Payouts</p>
               </>
             )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Ready for Payout */}
-      {readyAgents.length > 0 && (
-        <Card className="bg-gradient-to-r from-yellow-50 to-amber-50 border-yellow-200">
+      {/* Ready for Weekly Payout */}
+      {readyAgents.weekly.length > 0 && (
+        <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2 text-yellow-900">
+              <CardTitle className="flex items-center gap-2 text-blue-900">
                 <Users className="h-5 w-5" />
-                Agents Ready for Weekly Payout ({readyAgents.length})
+                Agents Ready for Weekly Payout ({readyAgents.weekly.length})
               </CardTitle>
               <Button
-                onClick={handleProcessAllPayouts}
+                onClick={handleProcessAllWeeklyPayouts}
                 disabled={processing}
-                className="bg-yellow-600 hover:bg-yellow-700 text-white"
+                className="bg-blue-600 hover:bg-blue-700 text-white"
               >
                 {processing ? (
                   <>
@@ -293,7 +318,7 @@ export function AdminWallet() {
                 ) : (
                   <>
                     <RefreshCcw className="mr-2 h-4 w-4" />
-                    Process All
+                    Process All Weekly
                   </>
                 )}
               </Button>
@@ -301,18 +326,90 @@ export function AdminWallet() {
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {readyAgents.map((agent) => (
+              {readyAgents.weekly.map((agent) => (
                 <div
                   key={agent.agentId}
-                  className="flex items-center justify-between p-4 bg-white rounded-lg border border-yellow-200 hover:shadow-md transition-shadow"
+                  className="flex items-center justify-between p-4 bg-white rounded-lg border border-blue-200 hover:shadow-md transition-shadow"
                 >
                   <div>
                     <p className="font-semibold text-gray-900">
-                      Agent #{agent.agentId.substring(0, 8).toUpperCase()}
+                      {agent.agentName || `Agent #${agent.agentId.substring(0, 8).toUpperCase()}`}
                     </p>
                     <p className="text-sm text-gray-600 mt-1">
                       Balance: <span className="font-medium">{formatCurrency(agent.balance)}</span>
                     </p>
+                    {agent.nextPayoutDate && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Next payout: {formatDate(agent.nextPayoutDate)}
+                      </p>
+                    )}
+                  </div>
+                  <Button
+                    onClick={() => handleProcessPayout(agent.agentId)}
+                    disabled={processing}
+                    size="sm"
+                    variant="outline"
+                  >
+                    {processing ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      'Process'
+                    )}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Ready for Monthly Payout */}
+      {readyAgents.monthly.length > 0 && (
+        <Card className="bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2 text-purple-900">
+                <Users className="h-5 w-5" />
+                Agents Ready for Monthly Payout ({readyAgents.monthly.length})
+              </CardTitle>
+              <Button
+                onClick={handleProcessAllMonthlyPayouts}
+                disabled={processing}
+                className="bg-purple-600 hover:bg-purple-700 text-white"
+              >
+                {processing ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCcw className="mr-2 h-4 w-4" />
+                    Process All Monthly
+                  </>
+                )}
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {readyAgents.monthly.map((agent) => (
+                <div
+                  key={agent.agentId}
+                  className="flex items-center justify-between p-4 bg-white rounded-lg border border-purple-200 hover:shadow-md transition-shadow"
+                >
+                  <div>
+                    <p className="font-semibold text-gray-900">
+                      {agent.agentName || `Agent #${agent.agentId.substring(0, 8).toUpperCase()}`}
+                    </p>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Balance: <span className="font-medium">{formatCurrency(agent.balance)}</span>
+                    </p>
+                    {agent.nextPayoutDate && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Next payout: {formatDate(agent.nextPayoutDate)}
+                      </p>
+                    )}
                   </div>
                   <Button
                     onClick={() => handleProcessPayout(agent.agentId)}
@@ -512,6 +609,14 @@ export function AdminWallet() {
                                   <p className="text-sm text-gray-500">
                                     Order #{transaction.order.id.substring(0, 8).toUpperCase()}
                                   </p>
+                                  {transaction.type === 'COMMISSION' && (
+                                    <>
+                                      <span className="text-gray-300">•</span>
+                                      <p className="text-xs text-green-600 font-medium">
+                                        30% commission
+                                      </p>
+                                    </>
+                                  )}
                                 </>
                               )}
                             </div>

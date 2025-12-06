@@ -39,6 +39,7 @@ export const agentProfileUpdateSchema= z.object({
    state: z.string().optional(),
    pincode: z.string().optional(),
    vehicleType: z.enum(['BIKE', 'SCOOTER', 'CAR', 'BICYCLE']).optional(),
+   payoutPlan: z.enum(['WEEKLY', 'MONTHLY']).optional(),
 });
 
 export const createOrderSchema= z.object({

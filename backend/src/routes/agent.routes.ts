@@ -5,7 +5,6 @@ import { validate } from '../middleware/validation.middleware';
 import { agentController } from '../controllers/agent.controller';
 import { scanningController } from '../controllers/scanning.controller';
 import { verificationController } from '../controllers/verification.controller';
-import { paymentController } from '../controllers/payment.controller';
 import { scheduleController } from '../controllers/schedule.controller';
 import { walletController } from '../controllers/wallet.controller';
 import { uploadSingle } from '../middleware/upload.middleware';
@@ -92,11 +91,7 @@ router.post('/orders/:id/verify-otp', requireAgent, verificationController.verif
 router.post('/orders/:id/verify-qr', requireAgent, verificationController.verifyWithQR);
 router.get('/orders/:id/verification', requireAgent, verificationController.getVerification);
 
-// Payments & Payroll
-router.get('/payments', requireAgent, paymentController.getPayments);
-router.get('/payments/summary', requireAgent, paymentController.getPaymentSummary);
-router.get('/payrolls', requireAgent, paymentController.getPayrolls);
-router.post('/payrolls/calculate', requireAgent, paymentController.calculatePayroll);
+// Payments & Payroll - REMOVED: Agents now see earnings directly in wallet
 
     // Schedule & Calendar
     router.post('/schedule', requireAgent, scheduleController.setSchedule);

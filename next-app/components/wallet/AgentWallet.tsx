@@ -137,7 +137,7 @@ export function AgentWallet() {
                 <p className="text-3xl font-bold text-gray-900">
                   {formatCurrency(wallet?.balance || 0)}
                 </p>
-                <p className="text-xs text-gray-500 mt-2">Pending payout</p>
+                <p className="text-xs text-gray-500 mt-2">Pending payout (70% per order)</p>
               </>
             )}
           </CardContent>
@@ -158,7 +158,7 @@ export function AgentWallet() {
                 <p className="text-3xl font-bold text-gray-900">
                   {formatCurrency(wallet?.totalEarned || 0)}
                 </p>
-                <p className="text-xs text-gray-500 mt-2">All time earnings</p>
+                <p className="text-xs text-gray-500 mt-2">All time earnings (70% per order)</p>
               </>
             )}
           </CardContent>
@@ -282,6 +282,14 @@ export function AgentWallet() {
                                   <p className="text-sm text-gray-500">
                                     Order #{transaction.order.id.substring(0, 8).toUpperCase()}
                                   </p>
+                                  {transaction.type === 'EARNING' && (
+                                    <>
+                                      <span className="text-gray-300">•</span>
+                                      <p className="text-xs text-blue-600 font-medium">
+                                        70% of order
+                                      </p>
+                                    </>
+                                  )}
                                 </>
                               )}
                             </div>
