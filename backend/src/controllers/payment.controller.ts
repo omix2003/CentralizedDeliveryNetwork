@@ -39,8 +39,18 @@ export const paymentController = {
             orderBy: { createdAt: 'desc' },
             skip,
             take: limit,
+          }).catch((err: any) => {
+            if (err?.code === 'P2021' || err?.code === 'P2022' || err?.code === '42P01' || err?.message?.includes('does not exist')) {
+              return [];
+            }
+            throw err;
           }),
-          prisma.payment.count({ where: { agentId } }),
+          prisma.payment.count({ where: { agentId } }).catch((err: any) => {
+            if (err?.code === 'P2021' || err?.code === 'P2022' || err?.code === '42P01' || err?.message?.includes('does not exist')) {
+              return 0;
+            }
+            throw err;
+          }),
         ]);
 
         res.json({
@@ -90,6 +100,7 @@ export const paymentController = {
         weekStart.setDate(weekStart.getDate() - 7);
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
+        // Wrap each query individually to handle missing table errors
         const [todayPayments, weekPayments, monthPayments, pendingPayments] = await Promise.all([
           prisma.payment.aggregate({
             where: {
@@ -99,6 +110,11 @@ export const paymentController = {
             },
             _sum: { amount: true },
             _count: true,
+          }).catch((err: any) => {
+            if (err?.code === 'P2021' || err?.code === 'P2022' || err?.code === '42P01' || err?.message?.includes('does not exist')) {
+              return { _sum: { amount: null }, _count: 0 };
+            }
+            throw err;
           }),
           prisma.payment.aggregate({
             where: {
@@ -108,6 +124,11 @@ export const paymentController = {
             },
             _sum: { amount: true },
             _count: true,
+          }).catch((err: any) => {
+            if (err?.code === 'P2021' || err?.code === 'P2022' || err?.code === '42P01' || err?.message?.includes('does not exist')) {
+              return { _sum: { amount: null }, _count: 0 };
+            }
+            throw err;
           }),
           prisma.payment.aggregate({
             where: {
@@ -117,6 +138,11 @@ export const paymentController = {
             },
             _sum: { amount: true },
             _count: true,
+          }).catch((err: any) => {
+            if (err?.code === 'P2021' || err?.code === 'P2022' || err?.code === '42P01' || err?.message?.includes('does not exist')) {
+              return { _sum: { amount: null }, _count: 0 };
+            }
+            throw err;
           }),
           prisma.payment.aggregate({
             where: {
@@ -125,6 +151,11 @@ export const paymentController = {
             },
             _sum: { amount: true },
             _count: true,
+          }).catch((err: any) => {
+            if (err?.code === 'P2021' || err?.code === 'P2022' || err?.code === '42P01' || err?.message?.includes('does not exist')) {
+              return { _sum: { amount: null }, _count: 0 };
+            }
+            throw err;
           }),
         ]);
 
@@ -184,8 +215,18 @@ export const paymentController = {
             orderBy: { periodStart: 'desc' },
             skip,
             take: limit,
+          }).catch((err: any) => {
+            if (err?.code === 'P2021' || err?.code === 'P2022' || err?.code === '42P01' || err?.message?.includes('does not exist')) {
+              return [];
+            }
+            throw err;
           }),
-          prisma.payroll.count({ where: { agentId } }),
+          prisma.payroll.count({ where: { agentId } }).catch((err: any) => {
+            if (err?.code === 'P2021' || err?.code === 'P2022' || err?.code === '42P01' || err?.message?.includes('does not exist')) {
+              return 0;
+            }
+            throw err;
+          }),
         ]);
 
         res.json({

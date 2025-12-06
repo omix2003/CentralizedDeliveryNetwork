@@ -183,9 +183,19 @@ export const ratingController = {
             orderBy: { createdAt: 'desc' },
             skip,
             take: Number(limit),
+          }).catch((err: any) => {
+            if (err?.code === 'P2021' || err?.code === 'P2022' || err?.code === '42P01' || err?.message?.includes('does not exist')) {
+              return [];
+            }
+            throw err;
           }),
           prisma.agentRating.count({
             where: { agentId },
+          }).catch((err: any) => {
+            if (err?.code === 'P2021' || err?.code === 'P2022' || err?.code === '42P01' || err?.message?.includes('does not exist')) {
+              return 0;
+            }
+            throw err;
           }),
         ]);
 

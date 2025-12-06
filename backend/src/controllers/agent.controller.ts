@@ -645,43 +645,87 @@ export const agentController = {
       const orderId = req.params.id;
 
       // Using select instead of include to avoid accessing columns that may not exist yet
-      const order = await prisma.order.findUnique({
-        where: { id: orderId },
-        select: {
-          id: true,
-          status: true,
-          agentId: true,
-          pickupLat: true,
-          pickupLng: true,
-          dropLat: true,
-          dropLng: true,
-          payoutAmount: true,
-          priority: true,
-          estimatedDuration: true,
-          actualDuration: true,
-          createdAt: true,
-          assignedAt: true,
-          pickedUpAt: true,
-          deliveredAt: true,
-          cancelledAt: true,
-          cancellationReason: true,
-          barcode: true,
-          qrCode: true,
-          partner: {
-            select: {
-              id: true,
-              companyName: true,
-              user: {
-                select: {
-                  name: true,
-                  email: true,
-                  phone: true,
+      // Note: barcode and qrCode are not selected as they may not exist in the database
+      let order;
+      try {
+        order = await prisma.order.findUnique({
+          where: { id: orderId },
+          select: {
+            id: true,
+            status: true,
+            agentId: true,
+            pickupLat: true,
+            pickupLng: true,
+            dropLat: true,
+            dropLng: true,
+            payoutAmount: true,
+            priority: true,
+            estimatedDuration: true,
+            actualDuration: true,
+            createdAt: true,
+            assignedAt: true,
+            pickedUpAt: true,
+            deliveredAt: true,
+            cancelledAt: true,
+            cancellationReason: true,
+            partner: {
+              select: {
+                id: true,
+                companyName: true,
+                user: {
+                  select: {
+                    name: true,
+                    email: true,
+                    phone: true,
+                  },
                 },
               },
             },
           },
-        },
-      });
+        });
+      } catch (error: any) {
+        // If query fails due to missing columns, try without optional fields
+        if (error?.code === 'P2022' || error?.message?.includes('does not exist')) {
+          console.warn('⚠️  Order query failed due to missing columns, retrying with minimal fields');
+          order = await prisma.order.findUnique({
+            where: { id: orderId },
+            select: {
+              id: true,
+              status: true,
+              agentId: true,
+              pickupLat: true,
+              pickupLng: true,
+              dropLat: true,
+              dropLng: true,
+              payoutAmount: true,
+              priority: true,
+              estimatedDuration: true,
+              actualDuration: true,
+              createdAt: true,
+              assignedAt: true,
+              pickedUpAt: true,
+              deliveredAt: true,
+              cancelledAt: true,
+              cancellationReason: true,
+              partner: {
+                select: {
+                  id: true,
+                  companyName: true,
+                  user: {
+                    select: {
+                      name: true,
+                      email: true,
+                      phone: true,
+                    },
+                  },
+                },
+              },
+            },
+          });
+        } else {
+          throw error;
+        }
+      }
 
       if (!order) {
         return res.status(404).json({ error: 'Order not found' });
@@ -772,8 +816,7 @@ export const agentController = {
         deliveredAt: order.deliveredAt?.toISOString(),
         cancelledAt: order.cancelledAt?.toISOString(),
         cancellationReason: order.cancellationReason,
-        barcode: order.barcode || null,
-        qrCode: order.qrCode || null,
+        // barcode and qrCode are not included as they may not exist in the database
         timing: {
           elapsedMinutes: timing.elapsedMinutes,
           remainingMinutes: timing.remainingMinutes,
@@ -1525,6 +1568,7 @@ export const agentController = {
               status: true,
               resolvedAt: true,
               createdAt: true,
+              updatedAt: true,
               order: {
                 select: {
                   id: true,
@@ -1537,8 +1581,18 @@ export const agentController = {
             },
             skip,
             take: limitNum,
+          }).catch((err: any) => {
+            if (err?.code === 'P2021' || err?.code === 'P2022' || err?.code === '42P01' || err?.message?.includes('does not exist')) {
+              return [];
+            }
+            throw err;
           }),
-          prisma.supportTicket.count({ where }),
+          prisma.supportTicket.count({ where }).catch((err: any) => {
+            if (err?.code === 'P2021' || err?.code === 'P2022' || err?.code === '42P01' || err?.message?.includes('does not exist')) {
+              return 0;
+            }
+            throw err;
+          }),
         ]);
       } catch (error: any) {
         // If table doesn't exist, return empty results
