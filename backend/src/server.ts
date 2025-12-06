@@ -3,7 +3,35 @@ import http from 'http';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
-import { getRedisClient, isRedisConnected, testRedisConnection, getRedisStatus } from './lib/redis';
+// Optional Redis import - app works without it
+// Use a function to lazily load Redis to avoid module load errors
+let redisModuleCache: any = null;
+
+const loadRedisModule = (): any => {
+  if (redisModuleCache !== null) {
+    return redisModuleCache;
+  }
+  
+  try {
+    redisModuleCache = require('./lib/redis');
+    return redisModuleCache;
+  } catch (error: any) {
+    // Module not found - provide fallback
+    redisModuleCache = {
+      getRedisClient: () => null,
+      isRedisConnected: () => false,
+      testRedisConnection: async () => false,
+      getRedisStatus: () => ({ connected: false, status: 'not_available', message: 'Redis module not available' }),
+    };
+    console.warn('⚠️  Redis module not available, running without Redis');
+    return redisModuleCache;
+  }
+};
+
+const getRedisClient = () => loadRedisModule().getRedisClient();
+const isRedisConnected = () => loadRedisModule().isRedisConnected();
+const testRedisConnection = () => loadRedisModule().testRedisConnection();
+const getRedisStatus = () => loadRedisModule().getRedisStatus();
 import { errorHandler } from './middleware/error.middleware';
 import { initializeWebSocket } from './lib/websocket';
 import { prisma } from './lib/prisma';
@@ -20,14 +48,41 @@ import ratingRoutes from './routes/rating.routes';
 // Load environment variables
 dotenv.config();
 
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  // Log the error but don't crash the server
+  if (reason instanceof Error) {
+    console.error('Error details:', {
+      name: reason.name,
+      message: reason.message,
+      stack: reason.stack,
+    });
+  }
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error: Error) => {
+  console.error('Uncaught Exception:', error);
+  console.error('Error details:', {
+    name: error.name,
+    message: error.message,
+    stack: error.stack,
+  });
+  // In production, you might want to gracefully shutdown
+  // For now, we'll just log it
+});
+
 const app = express();
-const httpServer = http.createServer(app);
+// Only create HTTP server if not running on Vercel (serverless)
+const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV;
+const httpServer = !isVercel ? http.createServer(app) : null;
 const PORT = process.env.PORT || 5000;
 
 // Initialize Redis connection (optional - app will work without it)
 if (process.env.REDIS_ENABLED === 'false') {
   console.log('ℹ️  Redis is disabled (REDIS_ENABLED=false). Running without Redis.');
-} else {
+} else if (getRedisClient) {
   try {
     getRedisClient();
   } catch (error) {
@@ -121,9 +176,14 @@ app.get('/health', async (req, res) => {
   let redisDetails: any = null;
   
   try {
-    const isConnected = await testRedisConnection();
-    redisStatus = isConnected ? 'connected' : 'disconnected';
-    redisDetails = getRedisStatus();
+    if (testRedisConnection && getRedisStatus) {
+      const isConnected = await testRedisConnection();
+      redisStatus = isConnected ? 'connected' : 'disconnected';
+      redisDetails = getRedisStatus();
+    } else {
+      redisStatus = 'not_available';
+      redisDetails = { message: 'Redis module not available' };
+    }
   } catch (error) {
     redisStatus = 'error';
     redisDetails = { error: 'Failed to check Redis status' };
@@ -287,13 +347,37 @@ app.get('/api/debug/routes', (req, res) => {
 // Error handler - must come before 404 handler
 app.use(errorHandler);
 
-// 404 handler - must be last (after error handler)
+// Method not allowed handler - check if route exists with different method
+app.use((req, res, next) => {
+  // Check if this is a known route path but wrong method
+  const knownRoutes = [
+    { path: '/api/auth/login', methods: ['POST'] },
+    { path: '/api/auth/register', methods: ['POST'] },
+    { path: '/api/auth/me', methods: ['GET'] },
+    { path: '/api/auth/profile-picture', methods: ['POST'] },
+    { path: '/api/auth/change-password', methods: ['PUT'] },
+  ];
+
+  const route = knownRoutes.find(r => r.path === req.path);
+  if (route && !route.methods.includes(req.method)) {
+    return res.status(405).json({
+      error: 'Method Not Allowed',
+      message: `${req.method} method is not allowed for this route`,
+      allowedMethods: route.methods,
+      path: req.path,
+    });
+  }
+  next();
+});
+
+// 404 handler - must be last (after error handler and method check)
 app.use((req, res) => {
   console.log(`❌ 404 - Route not found: ${req.method} ${req.originalUrl}`);
   res.status(404).json({ 
     error: 'Route not found',
     method: req.method,
     path: req.originalUrl,
+    message: 'The requested route does not exist',
     availableRoutes: [
       'GET /health',
       'GET /api/test',
@@ -307,43 +391,40 @@ app.use((req, res) => {
   });
 });
 
-// Check database connection and verify AgentRating table exists, run migrations if needed
+// Check database connection (non-blocking - server will start even if check fails)
 (async () => {
   try {
-    // Simple check to verify AgentRating table exists
-    await prisma.$queryRaw`SELECT 1 FROM "AgentRating" LIMIT 1`;
-    console.log('✅ AgentRating table exists');
-  } catch (error: any) {
-    if (error?.code === 'P2021' || error?.message?.includes('does not exist')) {
-      console.error('❌ AgentRating table does not exist!');
-      console.error('⚠️  Attempting to run migrations automatically...');
-      try {
-        const { execSync } = await import('child_process');
-        console.log('🔄 Running: npx prisma migrate deploy');
-        execSync('npx prisma migrate deploy', { 
-          stdio: 'inherit',
-          env: { ...process.env },
-          cwd: process.cwd()
-        });
-        console.log('✅ Migrations applied successfully');
-        // Verify table exists now
-        try {
-          await prisma.$queryRaw`SELECT 1 FROM "AgentRating" LIMIT 1`;
-          console.log('✅ AgentRating table verified after migration');
-        } catch (verifyError) {
-          console.error('⚠️  Table still not found after migration attempt');
-        }
-      } catch (migrateError: any) {
-        console.error('❌ Failed to run migrations automatically:', migrateError?.message);
-        console.error('⚠️  Error details:', {
-          code: migrateError?.code,
-          signal: migrateError?.signal,
-          status: migrateError?.status,
-        });
-        console.error('⚠️  Please ensure migrations run during build or add to start command');
+    // Test database connection
+    await prisma.$connect();
+    console.log('✅ Database connection established');
+    
+    // Optional check to verify AgentRating table exists (non-blocking)
+    try {
+      await prisma.$queryRaw`SELECT 1 FROM "AgentRating" LIMIT 1`;
+      console.log('✅ AgentRating table exists');
+    } catch (tableError: any) {
+      // Table doesn't exist - this is OK, migrations will create it
+      if (tableError?.code === 'P2021' || tableError?.code === '42P01' || tableError?.message?.includes('does not exist')) {
+        console.warn('⚠️  AgentRating table does not exist yet - migrations may need to run');
+        console.warn('⚠️  This is normal on first deployment. Migrations should run via prestart script.');
+      } else {
+        console.warn('⚠️  Could not verify AgentRating table:', tableError?.message);
       }
+    }
+  } catch (error: any) {
+    console.error('❌ Database connection failed:', {
+      code: error?.code,
+      message: error?.message,
+      name: error?.name,
+    });
+    
+    if (error?.code === 'P1001' || error?.message?.includes('Can\'t reach database server')) {
+      console.error('❌ Cannot connect to database server!');
+      console.error('⚠️  Please check DATABASE_URL environment variable');
+      console.error('⚠️  Server will continue to start but database operations will fail');
     } else {
-      console.log('ℹ️  Could not verify AgentRating table:', error?.message);
+      console.error('⚠️  Database connection issue:', error?.message);
+      console.error('⚠️  Server will continue to start but database operations may fail');
     }
   }
 })();
@@ -363,20 +444,32 @@ if (process.env.NODE_ENV === 'production' || process.env.ENABLE_DELAY_CHECKER ==
   console.log('✅ Periodic delay checker initialized (runs every 60 seconds)');
 }
 
-// Initialize WebSocket server
-initializeWebSocket(httpServer);
+// Initialize WebSocket server (skip on Vercel - not supported)
+if (!isVercel && httpServer) {
+  initializeWebSocket(httpServer);
+  console.log('✅ WebSocket server initialized');
+} else if (isVercel) {
+  console.log('⚠️  WebSocket disabled on Vercel (not supported in serverless environment)');
+}
 
-// Start HTTP server
-httpServer.listen(PORT, () => {
-  console.log(`🚀 Backend server running on http://localhost:${PORT}`);
-  console.log(`📡 Available endpoints:`);
-  console.log(`   GET  http://localhost:${PORT}/health`);
-  console.log(`   GET  http://localhost:${PORT}/api/test`);
-  console.log(`   POST http://localhost:${PORT}/api/auth/login`);
-  console.log(`   POST http://localhost:${PORT}/api/auth/register`);
-  console.log(`   GET  http://localhost:${PORT}/api/auth/me`);
-  console.log(`   WebSocket: ws://localhost:${PORT}/socket.io`);
-});
+// Start HTTP server (skip on Vercel - serverless functions don't need to listen)
+if (!isVercel && httpServer) {
+  httpServer.listen(PORT, () => {
+    console.log(`🚀 Backend server running on http://localhost:${PORT}`);
+    console.log(`📡 Available endpoints:`);
+    console.log(`   GET  http://localhost:${PORT}/health`);
+    console.log(`   GET  http://localhost:${PORT}/api/test`);
+    console.log(`   POST http://localhost:${PORT}/api/auth/login`);
+    console.log(`   POST http://localhost:${PORT}/api/auth/register`);
+    console.log(`   GET  http://localhost:${PORT}/api/auth/me`);
+    console.log(`   WebSocket: ws://localhost:${PORT}/socket.io`);
+  });
+} else if (isVercel) {
+  console.log('✅ Express app configured for Vercel serverless');
+}
+
+// Export app for Vercel serverless function
+export { app };
 
 
 

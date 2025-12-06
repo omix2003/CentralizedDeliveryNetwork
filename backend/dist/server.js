@@ -56,6 +56,29 @@ const public_routes_1 = __importDefault(require("./routes/public.routes"));
 const rating_routes_1 = __importDefault(require("./routes/rating.routes"));
 // Load environment variables
 dotenv_1.default.config();
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    // Log the error but don't crash the server
+    if (reason instanceof Error) {
+        console.error('Error details:', {
+            name: reason.name,
+            message: reason.message,
+            stack: reason.stack,
+        });
+    }
+});
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+    console.error('Uncaught Exception:', error);
+    console.error('Error details:', {
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+    });
+    // In production, you might want to gracefully shutdown
+    // For now, we'll just log it
+});
 const app = (0, express_1.default)();
 const httpServer = http_1.default.createServer(app);
 const PORT = process.env.PORT || 5000;
@@ -301,13 +324,35 @@ app.get('/api/debug/routes', (req, res) => {
 });
 // Error handler - must come before 404 handler
 app.use(error_middleware_1.errorHandler);
-// 404 handler - must be last (after error handler)
+// Method not allowed handler - check if route exists with different method
+app.use((req, res, next) => {
+    // Check if this is a known route path but wrong method
+    const knownRoutes = [
+        { path: '/api/auth/login', methods: ['POST'] },
+        { path: '/api/auth/register', methods: ['POST'] },
+        { path: '/api/auth/me', methods: ['GET'] },
+        { path: '/api/auth/profile-picture', methods: ['POST'] },
+        { path: '/api/auth/change-password', methods: ['PUT'] },
+    ];
+    const route = knownRoutes.find(r => r.path === req.path);
+    if (route && !route.methods.includes(req.method)) {
+        return res.status(405).json({
+            error: 'Method Not Allowed',
+            message: `${req.method} method is not allowed for this route`,
+            allowedMethods: route.methods,
+            path: req.path,
+        });
+    }
+    next();
+});
+// 404 handler - must be last (after error handler and method check)
 app.use((req, res) => {
     console.log(`❌ 404 - Route not found: ${req.method} ${req.originalUrl}`);
     res.status(404).json({
         error: 'Route not found',
         method: req.method,
         path: req.originalUrl,
+        message: 'The requested route does not exist',
         availableRoutes: [
             'GET /health',
             'GET /api/test',
@@ -320,47 +365,42 @@ app.use((req, res) => {
         ]
     });
 });
-// Check database connection and verify AgentRating table exists, run migrations if needed
+// Check database connection (non-blocking - server will start even if check fails)
 (async () => {
     try {
-        // Simple check to verify AgentRating table exists
-        await prisma_1.prisma.$queryRaw `SELECT 1 FROM "AgentRating" LIMIT 1`;
-        console.log('✅ AgentRating table exists');
-    }
-    catch (error) {
-        if (error?.code === 'P2021' || error?.message?.includes('does not exist')) {
-            console.error('❌ AgentRating table does not exist!');
-            console.error('⚠️  Attempting to run migrations automatically...');
-            try {
-                const { execSync } = await Promise.resolve().then(() => __importStar(require('child_process')));
-                console.log('🔄 Running: npx prisma migrate deploy');
-                execSync('npx prisma migrate deploy', {
-                    stdio: 'inherit',
-                    env: { ...process.env },
-                    cwd: process.cwd()
-                });
-                console.log('✅ Migrations applied successfully');
-                // Verify table exists now
-                try {
-                    await prisma_1.prisma.$queryRaw `SELECT 1 FROM "AgentRating" LIMIT 1`;
-                    console.log('✅ AgentRating table verified after migration');
-                }
-                catch (verifyError) {
-                    console.error('⚠️  Table still not found after migration attempt');
-                }
+        // Test database connection
+        await prisma_1.prisma.$connect();
+        console.log('✅ Database connection established');
+        // Optional check to verify AgentRating table exists (non-blocking)
+        try {
+            await prisma_1.prisma.$queryRaw `SELECT 1 FROM "AgentRating" LIMIT 1`;
+            console.log('✅ AgentRating table exists');
+        }
+        catch (tableError) {
+            // Table doesn't exist - this is OK, migrations will create it
+            if (tableError?.code === 'P2021' || tableError?.code === '42P01' || tableError?.message?.includes('does not exist')) {
+                console.warn('⚠️  AgentRating table does not exist yet - migrations may need to run');
+                console.warn('⚠️  This is normal on first deployment. Migrations should run via prestart script.');
             }
-            catch (migrateError) {
-                console.error('❌ Failed to run migrations automatically:', migrateError?.message);
-                console.error('⚠️  Error details:', {
-                    code: migrateError?.code,
-                    signal: migrateError?.signal,
-                    status: migrateError?.status,
-                });
-                console.error('⚠️  Please ensure migrations run during build or add to start command');
+            else {
+                console.warn('⚠️  Could not verify AgentRating table:', tableError?.message);
             }
         }
+    }
+    catch (error) {
+        console.error('❌ Database connection failed:', {
+            code: error?.code,
+            message: error?.message,
+            name: error?.name,
+        });
+        if (error?.code === 'P1001' || error?.message?.includes('Can\'t reach database server')) {
+            console.error('❌ Cannot connect to database server!');
+            console.error('⚠️  Please check DATABASE_URL environment variable');
+            console.error('⚠️  Server will continue to start but database operations will fail');
+        }
         else {
-            console.log('ℹ️  Could not verify AgentRating table:', error?.message);
+            console.error('⚠️  Database connection issue:', error?.message);
+            console.error('⚠️  Server will continue to start but database operations may fail');
         }
     }
 })();

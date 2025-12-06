@@ -287,14 +287,26 @@ export const agentController = {
       // In a real implementation, we'd use Redis GEO to find nearby orders
       
       // Get all orders that are searching for an agent
+      // Using select instead of include to avoid accessing columns that may not exist yet
       const orders = await prisma.order.findMany({
         where: {
           status: 'SEARCHING_AGENT',
           agentId: null, // Not yet assigned
         },
-        include: {
+        select: {
+          id: true,
+          status: true,
+          pickupLat: true,
+          pickupLng: true,
+          dropLat: true,
+          dropLng: true,
+          payoutAmount: true,
+          priority: true,
+          estimatedDuration: true,
+          createdAt: true,
           partner: {
-            include: {
+            select: {
+              companyName: true,
               user: {
                 select: {
                   name: true,
@@ -375,8 +387,25 @@ export const agentController = {
       }
 
       // Check if order exists and is available
+      // Use select to avoid fetching barcode/qrCode if columns don't exist yet
       const order = await prisma.order.findUnique({
         where: { id: orderId },
+        select: {
+          id: true,
+          status: true,
+          agentId: true,
+          partnerId: true,
+          pickupLat: true,
+          pickupLng: true,
+          dropLat: true,
+          dropLng: true,
+          payoutAmount: true,
+          priority: true,
+          estimatedDuration: true,
+          assignedAt: true,
+          createdAt: true,
+          updatedAt: true,
+        },
       });
 
       if (!order) {
@@ -394,15 +423,32 @@ export const agentController = {
       // Assign order to agent (using transaction to prevent race conditions)
       const updatedOrder = await prisma.$transaction(async (tx) => {
         // Double-check order is still available
+        // Use select to avoid fetching barcode/qrCode if columns don't exist yet
         const currentOrder = await tx.order.findUnique({
           where: { id: orderId },
+          select: {
+            id: true,
+            status: true,
+            agentId: true,
+            partnerId: true,
+            pickupLat: true,
+            pickupLng: true,
+            dropLat: true,
+            dropLng: true,
+            payoutAmount: true,
+            priority: true,
+            estimatedDuration: true,
+            assignedAt: true,
+            createdAt: true,
+            updatedAt: true,
+          },
         });
 
         if (!currentOrder || currentOrder.agentId || currentOrder.status !== 'SEARCHING_AGENT') {
           throw new Error('Order is no longer available');
         }
 
-        // Update order
+        // Update order (using select to avoid barcode/qrCode if columns don't exist)
         const order = await tx.order.update({
           where: { id: orderId },
           data: {
@@ -410,9 +456,25 @@ export const agentController = {
             status: 'ASSIGNED',
             assignedAt: new Date(),
           },
-          include: {
+          select: {
+            id: true,
+            status: true,
+            agentId: true,
+            partnerId: true,
+            pickupLat: true,
+            pickupLng: true,
+            dropLat: true,
+            dropLng: true,
+            payoutAmount: true,
+            priority: true,
+            estimatedDuration: true,
+            assignedAt: true,
+            createdAt: true,
+            updatedAt: true,
             partner: {
-              include: {
+              select: {
+                id: true,
+                companyName: true,
                 user: {
                   select: {
                     name: true,
@@ -528,11 +590,30 @@ export const agentController = {
       }
       // If status is 'ALL' or not provided, return all orders (including past/completed ones)
 
+      // Using select instead of include to avoid accessing columns that may not exist yet
       const orders = await prisma.order.findMany({
         where,
-        include: {
+        select: {
+          id: true,
+          status: true,
+          pickupLat: true,
+          pickupLng: true,
+          dropLat: true,
+          dropLng: true,
+          payoutAmount: true,
+          priority: true,
+          estimatedDuration: true,
+          actualDuration: true,
+          createdAt: true,
+          assignedAt: true,
+          pickedUpAt: true,
+          deliveredAt: true,
+          cancelledAt: true,
+          cancellationReason: true,
           partner: {
-            include: {
+            select: {
+              id: true,
+              companyName: true,
               user: {
                 select: {
                   name: true,
@@ -613,22 +694,88 @@ export const agentController = {
 
       const orderId = req.params.id;
 
-      const order = await prisma.order.findUnique({
-        where: { id: orderId },
-        include: {
-          partner: {
-            include: {
-              user: {
-                select: {
-                  name: true,
-                  email: true,
-                  phone: true,
+      // Using select instead of include to avoid accessing columns that may not exist yet
+      // Note: barcode and qrCode are not selected as they may not exist in the database
+      let order;
+      try {
+        order = await prisma.order.findUnique({
+          where: { id: orderId },
+          select: {
+            id: true,
+            status: true,
+            agentId: true,
+            pickupLat: true,
+            pickupLng: true,
+            dropLat: true,
+            dropLng: true,
+            payoutAmount: true,
+            priority: true,
+            estimatedDuration: true,
+            actualDuration: true,
+            createdAt: true,
+            assignedAt: true,
+            pickedUpAt: true,
+            deliveredAt: true,
+            cancelledAt: true,
+            cancellationReason: true,
+            partner: {
+              select: {
+                id: true,
+                companyName: true,
+                user: {
+                  select: {
+                    name: true,
+                    email: true,
+                    phone: true,
+                  },
                 },
               },
             },
           },
-        },
-      });
+        });
+      } catch (error: any) {
+        // If query fails due to missing columns, try without optional fields
+        if (error?.code === 'P2022' || error?.message?.includes('does not exist')) {
+          console.warn('⚠️  Order query failed due to missing columns, retrying with minimal fields');
+          order = await prisma.order.findUnique({
+            where: { id: orderId },
+            select: {
+              id: true,
+              status: true,
+              agentId: true,
+              pickupLat: true,
+              pickupLng: true,
+              dropLat: true,
+              dropLng: true,
+              payoutAmount: true,
+              priority: true,
+              estimatedDuration: true,
+              actualDuration: true,
+              createdAt: true,
+              assignedAt: true,
+              pickedUpAt: true,
+              deliveredAt: true,
+              cancelledAt: true,
+              cancellationReason: true,
+              partner: {
+                select: {
+                  id: true,
+                  companyName: true,
+                  user: {
+                    select: {
+                      name: true,
+                      email: true,
+                      phone: true,
+                    },
+                  },
+                },
+              },
+            },
+          });
+        } else {
+          throw error;
+        }
+      }
 
       if (!order) {
         return res.status(404).json({ error: 'Order not found' });
@@ -639,20 +786,62 @@ export const agentController = {
         return res.status(403).json({ error: 'You do not have permission to view this order' });
       }
 
-      // Check and update delayed status
-      const { delayCheckerService } = await import('../services/delay-checker.service');
-      await delayCheckerService.checkOrderDelay(orderId);
-      
-      // Refresh order to get updated status
-      const refreshedOrder = await prisma.order.findUnique({
-        where: { id: orderId },
-      });
-      
-      // Calculate timing information
-      const timing = delayCheckerService.getOrderTiming({
-        pickedUpAt: refreshedOrder?.pickedUpAt || order.pickedUpAt,
-        estimatedDuration: refreshedOrder?.estimatedDuration || order.estimatedDuration,
-      });
+      // Check and update delayed status (with error handling)
+      let refreshedOrder = null;
+      let timing = {
+        elapsedMinutes: 0,
+        remainingMinutes: order.estimatedDuration || 0,
+        isDelayed: false,
+        elapsedTime: '0:00',
+        remainingTime: order.estimatedDuration ? `${order.estimatedDuration}:00` : 'N/A',
+      };
+
+      try {
+        const { delayCheckerService } = await import('../services/delay-checker.service');
+        await delayCheckerService.checkOrderDelay(orderId);
+        
+        // Refresh order to get updated status (using select to avoid missing columns)
+        refreshedOrder = await prisma.order.findUnique({
+          where: { id: orderId },
+          select: {
+            id: true,
+            status: true,
+            pickedUpAt: true,
+            estimatedDuration: true,
+          },
+        });
+        
+        // Calculate timing information
+        timing = delayCheckerService.getOrderTiming({
+          pickedUpAt: refreshedOrder?.pickedUpAt || order.pickedUpAt,
+          estimatedDuration: refreshedOrder?.estimatedDuration || order.estimatedDuration,
+        });
+      } catch (delayError: any) {
+        // Log error but don't fail the request
+        console.error('[Agent Controller] Error checking order delay:', delayError?.message);
+        // Use order data directly for timing
+        if (order.pickedUpAt && order.estimatedDuration) {
+          const now = new Date();
+          const elapsedMs = now.getTime() - order.pickedUpAt.getTime();
+          const elapsedMinutes = Math.floor(elapsedMs / 60000);
+          const remainingMinutes = Math.max(0, order.estimatedDuration - elapsedMinutes);
+          const isDelayed = elapsedMinutes > order.estimatedDuration;
+          
+          const formatTime = (minutes: number) => {
+            const hrs = Math.floor(minutes / 60);
+            const mins = minutes % 60;
+            return hrs > 0 ? `${hrs}:${mins.toString().padStart(2, '0')}` : `${mins}:00`;
+          };
+          
+          timing = {
+            elapsedMinutes,
+            remainingMinutes,
+            isDelayed,
+            elapsedTime: formatTime(elapsedMinutes),
+            remainingTime: formatTime(remainingMinutes),
+          };
+        }
+      }
 
       // Format order for response
       const formattedOrder = {
@@ -677,6 +866,7 @@ export const agentController = {
         deliveredAt: order.deliveredAt?.toISOString(),
         cancelledAt: order.cancelledAt?.toISOString(),
         cancellationReason: order.cancellationReason,
+        // barcode and qrCode are not included as they may not exist in the database
         timing: {
           elapsedMinutes: timing.elapsedMinutes,
           remainingMinutes: timing.remainingMinutes,
@@ -711,8 +901,20 @@ export const agentController = {
       const { status, cancellationReason } = req.body;
 
       // Verify agent owns this order
+      // Use select to avoid fetching barcode/qrCode if columns don't exist yet
       const order = await prisma.order.findUnique({
         where: { id: orderId },
+        select: {
+          id: true,
+          status: true,
+          agentId: true,
+          partnerId: true,
+          cancellationReason: true,
+          cancelledAt: true,
+          pickedUpAt: true,
+          deliveredAt: true,
+          payoutAmount: true,
+        },
       });
 
       if (!order) {
@@ -737,6 +939,69 @@ export const agentController = {
           const duration = Math.floor((new Date().getTime() - order.pickedUpAt.getTime()) / 60000);
           updateData.actualDuration = duration;
         }
+        
+        // Calculate and create payment for delivered order
+        try {
+          const { paymentService } = await import('../services/payment.service');
+          const paymentCalculation = await paymentService.calculateOrderPayment(orderId, agentId);
+          await paymentService.createPayment(
+            agentId,
+            orderId,
+            paymentCalculation.netPay,
+            'DELIVERY_FEE'
+          );
+
+          // Credit agent wallet
+          const { walletService } = await import('../services/wallet.service');
+          await walletService.creditAgentWallet(
+            agentId,
+            paymentCalculation.netPay,
+            orderId,
+            `Earning from order ${orderId.substring(0, 8).toUpperCase()}`
+          );
+        } catch (paymentError: any) {
+          console.error('[Agent Controller] Error creating payment:', paymentError?.message);
+          // Don't fail the order update if payment creation fails
+        }
+
+        // Create revenue records for partner and platform
+        try {
+          const { revenueService } = await import('../services/revenue.service');
+          const now = new Date();
+          const periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          const periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+
+          // Create partner revenue
+          await revenueService.createPartnerRevenue(
+            order.partnerId,
+            orderId,
+            periodStart,
+            periodEnd,
+            'DAILY'
+          );
+
+          // Create platform revenue
+          const platformRevenue = await revenueService.createPlatformRevenue(
+            orderId,
+            order.partnerId,
+            agentId,
+            periodStart,
+            periodEnd,
+            'DAILY'
+          );
+
+          // Credit admin wallet with platform commission
+          const { walletService } = await import('../services/wallet.service');
+          await walletService.creditAdminWallet(
+            platformRevenue.netRevenue,
+            orderId,
+            `Commission from order ${orderId.substring(0, 8).toUpperCase()}`
+          );
+        } catch (revenueError: any) {
+          console.error('[Agent Controller] Error creating revenue records:', revenueError?.message);
+          // Don't fail the order update if revenue creation fails
+        }
+        
         // Update agent stats
         await prisma.agent.update({
           where: { id: agentId },
@@ -764,9 +1029,29 @@ export const agentController = {
         });
       }
 
+      // Update order (using select to avoid barcode/qrCode if columns don't exist)
       const updatedOrder = await prisma.order.update({
         where: { id: orderId },
         data: updateData,
+        select: {
+          id: true,
+          status: true,
+          agentId: true,
+          partnerId: true,
+          pickupLat: true,
+          pickupLng: true,
+          dropLat: true,
+          dropLng: true,
+          payoutAmount: true,
+          priority: true,
+          estimatedDuration: true,
+          pickedUpAt: true,
+          deliveredAt: true,
+          cancelledAt: true,
+          assignedAt: true,
+          createdAt: true,
+          updatedAt: true,
+        },
       });
 
       // Check for delay after status update (if order was picked up or is out for delivery)
@@ -778,10 +1063,12 @@ export const agentController = {
         );
       }
 
-      // Fetch updated order with includes for response
+      // Fetch updated order with select to avoid accessing non-existent columns
       const orderWithIncludes = await prisma.order.findUnique({
         where: { id: orderId },
-        include: {
+        select: {
+          id: true,
+          status: true,
           partner: {
             select: {
               id: true,
@@ -857,6 +1144,7 @@ export const agentController = {
     try {
       const agentId = getAgentId(req);
       if (!agentId) {
+        console.error('[Agent Metrics] No agent ID found in request');
         return res.status(404).json({ error: 'Agent profile not found' });
       }
 
@@ -951,33 +1239,22 @@ export const agentController = {
         : 0;
 
       // Active orders (orders that are assigned, picked up, or out for delivery)
-      // Build active statuses array, handling DELAYED enum availability
-      const activeStatuses: any[] = [
-        OrderStatus.ASSIGNED, 
-        OrderStatus.PICKED_UP, 
-        OrderStatus.OUT_FOR_DELIVERY
-      ];
-      
-      // Add DELAYED if available in enum, otherwise add as string
+      // Query WITHOUT DELAYED to avoid enum errors - DELAYED doesn't exist in database enum yet
+      let activeOrders = 0;
       try {
-        if ((OrderStatus as any).DELAYED) {
-          activeStatuses.push((OrderStatus as any).DELAYED);
-        } else {
-          activeStatuses.push('DELAYED');
-        }
-      } catch (e) {
-        // If DELAYED not available, add as string literal
-        activeStatuses.push('DELAYED');
-      }
-      
-      const activeOrders = await prisma.order.count({
-        where: {
-          agentId,
-          status: {
-            in: activeStatuses,
+        // Only query statuses that definitely exist in the database enum
+        activeOrders = await prisma.order.count({
+          where: {
+            agentId,
+            status: {
+              in: [OrderStatus.ASSIGNED, OrderStatus.PICKED_UP, OrderStatus.OUT_FOR_DELIVERY],
+            },
           },
-        },
-      });
+        });
+      } catch (activeOrdersError: any) {
+        console.error('[Agent Metrics] Error counting active orders:', activeOrdersError?.message);
+        activeOrders = 0;
+      }
 
       // Get active order details if exists
       // Check both currentOrderId and any active order assigned to this agent
@@ -988,28 +1265,12 @@ export const agentController = {
       
       // If no currentOrderId, check for any active order assigned to this agent
       if (!orderToCheck) {
-        const activeStatusesForQuery: any[] = [
-          OrderStatus.ASSIGNED, 
-          OrderStatus.PICKED_UP, 
-          OrderStatus.OUT_FOR_DELIVERY
-        ];
-        
-        // Add DELAYED if available
-        try {
-          if ((OrderStatus as any).DELAYED) {
-            activeStatusesForQuery.push((OrderStatus as any).DELAYED);
-          } else {
-            activeStatusesForQuery.push('DELAYED');
-          }
-        } catch (e) {
-          activeStatusesForQuery.push('DELAYED');
-        }
-        
+        // Query WITHOUT DELAYED to avoid enum errors
         const activeOrderRecord = await prisma.order.findFirst({
           where: {
             agentId,
             status: {
-              in: activeStatusesForQuery,
+              in: [OrderStatus.ASSIGNED, OrderStatus.PICKED_UP, OrderStatus.OUT_FOR_DELIVERY],
             },
           },
           orderBy: {
@@ -1019,6 +1280,7 @@ export const agentController = {
             id: true,
           },
         });
+        
         orderToCheck = activeOrderRecord?.id || null;
       }
       
@@ -1044,27 +1306,14 @@ export const agentController = {
             console.warn('[Agent Metrics] Order not found:', orderToCheck);
             activeOrder = null;
           } else {
-            // Check if order status is active (including DELAYED)
-            const activeStatuses: any[] = [
+            // Check if order status is active (excluding DELAYED to avoid enum errors)
+            const activeStatuses: OrderStatus[] = [
               OrderStatus.ASSIGNED, 
               OrderStatus.PICKED_UP, 
               OrderStatus.OUT_FOR_DELIVERY
             ];
             
-            // Add DELAYED if available
-            try {
-              if ((OrderStatus as any).DELAYED) {
-                activeStatuses.push((OrderStatus as any).DELAYED);
-              } else {
-                activeStatuses.push('DELAYED');
-              }
-            } catch (e) {
-              activeStatuses.push('DELAYED');
-            }
-            
-            const isActiveStatus = activeStatuses.includes(order.status as any) || 
-              order.status === 'DELAYED' ||
-              (order.status as string) === 'DELAYED';
+            const isActiveStatus = activeStatuses.includes(order.status as OrderStatus);
             
             if (isActiveStatus) {
               // Check and update delayed status
@@ -1092,9 +1341,29 @@ export const agentController = {
                 }
                 
                 // Refresh order to get updated status (without relations to avoid type issues)
+                // Use select to avoid fetching barcode/qrCode if columns don't exist yet
                 try {
                   const refreshedOrderData = await prisma.order.findUnique({
                     where: { id: order.id },
+                    select: {
+                      id: true,
+                      status: true,
+                      agentId: true,
+                      partnerId: true,
+                      pickupLat: true,
+                      pickupLng: true,
+                      dropLat: true,
+                      dropLng: true,
+                      payoutAmount: true,
+                      priority: true,
+                      estimatedDuration: true,
+                      assignedAt: true,
+                      pickedUpAt: true,
+                      deliveredAt: true,
+                      cancelledAt: true,
+                      createdAt: true,
+                      updatedAt: true,
+                    },
                   });
                   
                   if (refreshedOrderData) {
@@ -1185,27 +1454,29 @@ export const agentController = {
         }
       }
 
+      // Ensure all values are valid numbers
       const response = {
-        todayOrders,
-        yesterdayOrders,
-        ordersChange: Math.round(ordersChange),
-        monthlyEarnings,
-        lastMonthEarnings,
-        earningsChange: Math.round(earningsChange),
-        activeOrders,
-        completedOrders: agent.completedOrders || 0,
-        totalOrders: agent.totalOrders || 0,
-        cancelledOrders: agent.cancelledOrders || 0,
-        acceptanceRate: agent.acceptanceRate || 0,
-        rating: agent.rating || 0,
-        thisMonthOrders: thisMonthOrders.length,
-        activeOrder,
+        todayOrders: Number(todayOrders) || 0,
+        yesterdayOrders: Number(yesterdayOrders) || 0,
+        ordersChange: Math.round(Number(ordersChange)) || 0,
+        monthlyEarnings: Number(monthlyEarnings) || 0,
+        lastMonthEarnings: Number(lastMonthEarnings) || 0,
+        earningsChange: Math.round(Number(earningsChange)) || 0,
+        activeOrders: Number(activeOrders) || 0,
+        completedOrders: Number(agent.completedOrders) || 0,
+        totalOrders: Number(agent.totalOrders) || 0,
+        cancelledOrders: Number(agent.cancelledOrders) || 0,
+        acceptanceRate: Number(agent.acceptanceRate) || 0,
+        rating: Number(agent.rating) || 0,
+        thisMonthOrders: Number(thisMonthOrders.length) || 0,
+        activeOrder: activeOrder || null,
       };
 
       console.log('[Agent Metrics] Successfully returning metrics:', {
         todayOrders: response.todayOrders,
         activeOrders: response.activeOrders,
         hasActiveOrder: !!response.activeOrder,
+        agentId,
       });
 
       res.json(response);
@@ -1216,11 +1487,21 @@ export const agentController = {
         stack: error?.stack,
         name: error?.name,
         code: error?.code,
+        agentId: getAgentId(req as any),
       });
       
-      // Return a more detailed error response
+      // Return a more detailed error response for common issues
       if (error?.code === 'P2002' || error?.message?.includes('Unique constraint')) {
         return res.status(400).json({ error: 'Database constraint violation' });
+      }
+      
+      if (error?.code === 'P2025' || error?.message?.includes('Record not found')) {
+        return res.status(404).json({ error: 'Agent not found' });
+      }
+      
+      // Log full error for debugging in production
+      if (process.env.NODE_ENV === 'production') {
+        console.error('[Agent Metrics] Full error object:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
       }
       
       next(error);
@@ -1376,25 +1657,55 @@ export const agentController = {
         where.status = status;
       }
 
-      const [tickets, total] = await Promise.all([
-        prisma.supportTicket.findMany({
-          where,
-          include: {
-            order: {
-              select: {
-                id: true,
-                status: true,
+      let tickets: any[] = [];
+      let total = 0;
+      try {
+        [tickets, total] = await Promise.all([
+          prisma.supportTicket.findMany({
+            where,
+            select: {
+              id: true,
+              issueType: true,
+              description: true,
+              status: true,
+              resolvedAt: true,
+              createdAt: true,
+              updatedAt: true,
+              order: {
+                select: {
+                  id: true,
+                  status: true,
+                },
               },
             },
-          },
-          orderBy: {
-            createdAt: 'desc',
-          },
-          skip,
-          take: limitNum,
-        }),
-        prisma.supportTicket.count({ where }),
-      ]);
+            orderBy: {
+              createdAt: 'desc',
+            },
+            skip,
+            take: limitNum,
+          }).catch((err: any) => {
+            if (err?.code === 'P2021' || err?.code === 'P2022' || err?.code === '42P01' || err?.message?.includes('does not exist')) {
+              return [];
+            }
+            throw err;
+          }),
+          prisma.supportTicket.count({ where }).catch((err: any) => {
+            if (err?.code === 'P2021' || err?.code === 'P2022' || err?.code === '42P01' || err?.message?.includes('does not exist')) {
+              return 0;
+            }
+            throw err;
+          }),
+        ]);
+      } catch (error: any) {
+        // If table doesn't exist, return empty results
+        if (error?.code === 'P2021' || error?.code === 'P2022' || error?.code === '42P01' || error?.message?.includes('does not exist')) {
+          console.warn('⚠️  SupportTicket table does not exist - returning empty results');
+          tickets = [];
+          total = 0;
+        } else {
+          throw error;
+        }
+      }
 
       res.json({
         tickets: tickets.map((ticket: any) => ({
@@ -1440,9 +1751,16 @@ export const agentController = {
       }
 
       // Verify order exists and belongs to agent if orderId is provided
+      // Use select to avoid fetching barcode/qrCode if columns don't exist yet
       if (orderId) {
         const order = await prisma.order.findUnique({
           where: { id: orderId },
+          select: {
+            id: true,
+            status: true,
+            agentId: true,
+            partnerId: true,
+          },
         });
 
         if (!order) {

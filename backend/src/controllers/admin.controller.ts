@@ -298,7 +298,21 @@ export const adminController = {
 
       const agent = await prisma.agent.findUnique({
         where: { id },
-        include: {
+        select: {
+          id: true,
+          status: true,
+          vehicleType: true,
+          city: true,
+          state: true,
+          pincode: true,
+          isApproved: true,
+          isBlocked: true,
+          blockedReason: true,
+          rating: true,
+          totalOrders: true,
+          completedOrders: true,
+          acceptanceRate: true,
+          createdAt: true,
           user: {
             select: {
               id: true,
@@ -313,9 +327,15 @@ export const adminController = {
           orders: {
             take: 10,
             orderBy: { createdAt: 'desc' },
-            include: {
+            select: {
+              id: true,
+              status: true,
+              createdAt: true,
+              payoutAmount: true,
               partner: {
-                include: {
+                select: {
+                  id: true,
+                  companyName: true,
                   user: {
                     select: { name: true },
                   },
@@ -1040,7 +1060,10 @@ export const adminController = {
       const [orders, total] = await Promise.all([
         prisma.order.findMany({
           where,
-          include: {
+          select: {
+            id: true,
+            status: true,
+            createdAt: true,
             partner: {
               select: {
                 id: true,
@@ -1056,7 +1079,8 @@ export const adminController = {
               },
             },
             agent: {
-              include: {
+              select: {
+                id: true,
                 user: {
                   select: {
                     name: true,
@@ -1133,6 +1157,12 @@ export const adminController = {
       // Refresh order to get updated status
       const refreshedOrder = await prisma.order.findUnique({
         where: { id },
+        select: {
+          id: true,
+          status: true,
+          pickedUpAt: true,
+          estimatedDuration: true,
+        },
       });
       
       // Calculate timing information
@@ -1196,6 +1226,7 @@ export const adminController = {
               status: 'ASSIGNED',
               assignedAt: new Date(),
             },
+            select: { id: true, status: true, agentId: true }, // Only select fields we need
           });
 
           await tx.agent.update({
@@ -1214,6 +1245,7 @@ export const adminController = {
             status: 'SEARCHING_AGENT',
             assignedAt: null,
           },
+          select: { id: true, status: true, agentId: true }, // Only select fields we need
         });
 
         // Trigger assignment engine

@@ -159,26 +159,194 @@ export const partnerController = {
         dropLat,
         dropLng,
         payoutAmount,
+        orderAmount, // What partner charges customer
+        orderType = 'ON_DEMAND', // ON_DEMAND or B2B_BULK
+        commissionRate, // Optional custom commission rate
         priority = 'NORMAL',
         estimatedDuration,
       } = req.body;
 
-      // Create order
-      const order = await prisma.order.create({
-        data: {
-          partnerId,
-          pickupLat,
-          pickupLng,
-          dropLat,
-          dropLng,
-          payoutAmount,
-          priority,
-          estimatedDuration,
-          status: 'SEARCHING_AGENT',
-        },
-        include: {
+      // Validate commission rate based on order type
+      let finalCommissionRate = commissionRate;
+      if (!finalCommissionRate) {
+        // Default commission rates
+        finalCommissionRate = orderType === 'B2B_BULK' ? 10 : 20; // 10% for B2B, 20% for ON_DEMAND
+      } else {
+        // Validate commission rate is within allowed range
+        if (orderType === 'B2B_BULK') {
+          finalCommissionRate = Math.max(8, Math.min(12, finalCommissionRate)); // 8-12% for B2B
+        } else {
+          finalCommissionRate = Math.max(15, Math.min(30, finalCommissionRate)); // 15-30% for ON_DEMAND
+        }
+      }
+
+      // Calculate order amount if not provided (default: payoutAmount * 1.25 for 25% partner markup)
+      const finalOrderAmount = orderAmount || (payoutAmount * 1.25);
+
+      // Create order first (barcode/QR will be generated after)
+      // Try with all fields first, fallback to basic fields if columns don't exist
+      let order;
+      try {
+        order = await prisma.order.create({
+          data: {
+            partnerId,
+            pickupLat,
+            pickupLng,
+            dropLat,
+            dropLng,
+            payoutAmount,
+            orderAmount: finalOrderAmount,
+            orderType: orderType as 'ON_DEMAND' | 'B2B_BULK',
+            commissionRate: finalCommissionRate,
+            priority,
+            estimatedDuration,
+            status: 'SEARCHING_AGENT',
+          },
+          select: {
+            id: true,
+            status: true,
+            pickupLat: true,
+            pickupLng: true,
+            dropLat: true,
+            dropLng: true,
+            payoutAmount: true,
+            priority: true,
+            estimatedDuration: true,
+            createdAt: true,
+            partner: {
+              select: {
+                id: true,
+                user: {
+                  select: {
+                    name: true,
+                    id: true,
+                  },
+                },
+              },
+            },
+          },
+        });
+      } catch (createError: any) {
+        // If columns don't exist (P2021/P2022), create order without them
+        if (createError?.code === 'P2021' || createError?.code === 'P2022' || 
+            createError?.message?.includes('orderAmount') || 
+            createError?.message?.includes('commissionRate') ||
+            createError?.message?.includes('orderType') ||
+            createError?.message?.includes('does not exist')) {
+          console.warn('[Partner] Order columns missing, creating order without revenue fields:', createError.message);
+          
+          // Try creating with minimal fields - catch any additional missing column errors
+          try {
+            order = await prisma.order.create({
+              data: {
+                partnerId,
+                pickupLat,
+                pickupLng,
+                dropLat,
+                dropLng,
+                payoutAmount,
+                priority,
+                estimatedDuration,
+                status: 'SEARCHING_AGENT',
+              },
+              select: {
+                id: true,
+                status: true,
+                pickupLat: true,
+                pickupLng: true,
+                dropLat: true,
+                dropLng: true,
+                payoutAmount: true,
+                priority: true,
+                estimatedDuration: true,
+                createdAt: true,
+                partner: {
+                  select: {
+                    id: true,
+                    user: {
+                      select: {
+                        name: true,
+                        id: true,
+                      },
+                    },
+                  },
+                },
+              },
+            });
+          } catch (fallbackError: any) {
+            // If even basic fields fail, try with absolute minimum
+            if (fallbackError?.code === 'P2021' || fallbackError?.code === 'P2022' || 
+                fallbackError?.message?.includes('does not exist')) {
+              console.warn('[Partner] Additional columns missing, trying absolute minimum fields:', fallbackError.message);
+              order = await prisma.order.create({
+                data: {
+                  partnerId,
+                  pickupLat,
+                  pickupLng,
+                  dropLat,
+                  dropLng,
+                  payoutAmount,
+                  status: 'SEARCHING_AGENT',
+                },
+                select: {
+                  id: true,
+                  status: true,
+                  pickupLat: true,
+                  pickupLng: true,
+                  dropLat: true,
+                  dropLng: true,
+                  payoutAmount: true,
+                  createdAt: true,
+                  partner: {
+                    select: {
+                      id: true,
+                      user: {
+                        select: {
+                          name: true,
+                          id: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              });
+            } else {
+              // Re-throw if it's a different error
+              throw fallbackError;
+            }
+          }
+        } else {
+          // Re-throw if it's a different error
+          throw createError;
+        }
+      }
+
+      // Generate and assign barcode/QR code after order creation
+      try {
+        const { barcodeService } = await import('../services/barcode.service');
+        await barcodeService.assignBarcodeToOrder(order.id);
+      } catch (error: any) {
+        // Log but don't fail if barcode service has issues
+        console.warn('[Partner] Barcode service error:', error.message);
+      }
+
+      // Fetch updated order (using select to avoid non-existent columns)
+      const orderWithBarcode = await prisma.order.findUnique({
+        where: { id: order.id },
+        select: {
+          id: true,
+          status: true,
+          pickupLat: true,
+          pickupLng: true,
+          dropLat: true,
+          dropLng: true,
+          payoutAmount: true,
+          priority: true,
+          estimatedDuration: true,
+          createdAt: true,
           partner: {
-            include: {
+            select: {
+              id: true,
               user: {
                 select: {
                   name: true,
@@ -193,9 +361,9 @@ export const partnerController = {
       // Log order creation event
       eventService.logOrderEvent(
         EventType.ORDER_CREATED,
-        order.id,
+        orderWithBarcode!.id,
         ActorType.PARTNER,
-        order.partner.user.id,
+        orderWithBarcode!.partner.user.id,
         {
           partnerId,
           payoutAmount,
@@ -208,19 +376,20 @@ export const partnerController = {
       // This will find nearby agents and offer the order to them
       // Assignment happens when an agent accepts the order
       const { assignOrder } = await import('../services/assignment.service');
-      console.log(`[Partner] Triggering assignment for order ${order.id} at (${order.pickupLat}, ${order.pickupLng})`);
+      const finalOrder = orderWithBarcode || order;
+      console.log(`[Partner] Triggering assignment for order ${finalOrder.id} at (${finalOrder.pickupLat}, ${finalOrder.pickupLng})`);
       assignOrder({
-        orderId: order.id,
-        pickupLat: order.pickupLat,
-        pickupLng: order.pickupLng,
-        payoutAmount: order.payoutAmount,
-        priority: (order.priority as 'HIGH' | 'NORMAL' | 'LOW') || 'NORMAL',
+        orderId: finalOrder.id,
+        pickupLat: finalOrder.pickupLat,
+        pickupLng: finalOrder.pickupLng,
+        payoutAmount: finalOrder.payoutAmount,
+        priority: ((finalOrder as any).priority as 'HIGH' | 'NORMAL' | 'LOW') || 'NORMAL',
         maxRadius: 5000, // 5km
         maxAgentsToOffer: 5,
         offerTimeout: 30, // 30 seconds
       })
         .then((result) => {
-          console.log(`[Partner] Assignment result for order ${order.id}:`, {
+          console.log(`[Partner] Assignment result for order ${finalOrder.id}:`, {
             success: result.success,
             agentsOffered: result.agentsOffered,
             assigned: result.assigned,
@@ -236,16 +405,16 @@ export const partnerController = {
       await notifyPartner(
         partnerId,
         'ORDER_CREATED',
-        order.id,
-        order.status,
+        finalOrder.id,
+        finalOrder.status,
         {
-          trackingNumber: order.id.substring(0, 8).toUpperCase(),
-          payout: order.payoutAmount,
+          trackingNumber: finalOrder.id.substring(0, 8).toUpperCase(),
+          payout: finalOrder.payoutAmount,
         }
       );
 
       res.status(201).json({
-        id: order.id,
+        id: finalOrder.id,
         trackingNumber: order.id.substring(0, 8).toUpperCase(),
         status: order.status,
         pickup: {
@@ -257,8 +426,8 @@ export const partnerController = {
           longitude: order.dropLng,
         },
         payout: order.payoutAmount,
-        priority: order.priority,
-        estimatedDuration: order.estimatedDuration,
+        priority: (order as any).priority || 'NORMAL',
+        estimatedDuration: (order as any).estimatedDuration || null,
         createdAt: order.createdAt.toISOString(),
       });
     } catch (error) {
@@ -397,59 +566,218 @@ export const partnerController = {
 
       const orderId = req.params.id;
 
-      const order = await prisma.order.findFirst({
-        where: {
-          id: orderId,
-          partnerId, // Ensure partner owns this order
-        },
-        include: {
-          agent: {
-            include: {
-              user: {
+      // Try to include barcode and qrCode in the main query
+      let order: any = null;
+      let barcode = null;
+      let qrCode = null;
+      
+      try {
+        // First try with barcode/qrCode included
+        order = await prisma.order.findFirst({
+          where: {
+            id: orderId,
+            partnerId, // Ensure partner owns this order
+          },
+          select: {
+            id: true,
+            status: true,
+            pickupLat: true,
+            pickupLng: true,
+            dropLat: true,
+            dropLng: true,
+            payoutAmount: true,
+            priority: true,
+            estimatedDuration: true,
+            actualDuration: true,
+            assignedAt: true,
+            pickedUpAt: true,
+            deliveredAt: true,
+            cancelledAt: true,
+            cancellationReason: true,
+            createdAt: true,
+            updatedAt: true,
+            barcode: true,
+            qrCode: true,
+            agent: {
+              select: {
+                id: true,
+                vehicleType: true,
+                rating: true,
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    phone: true,
+                  },
+                },
+              },
+            },
+            partner: {
+              select: {
+                id: true,
+                companyName: true,
+              },
+            },
+          },
+        });
+        
+        if (order) {
+          barcode = order.barcode;
+          qrCode = order.qrCode;
+        }
+      } catch (error: any) {
+        // If barcode/qrCode columns don't exist, try without them
+        if (error.message?.includes('barcode') || error.message?.includes('qrCode')) {
+          console.warn('[Partner] Barcode/QR code columns not found, fetching without them');
+          order = await prisma.order.findFirst({
+            where: {
+              id: orderId,
+              partnerId,
+            },
+            select: {
+              id: true,
+              status: true,
+              pickupLat: true,
+              pickupLng: true,
+              dropLat: true,
+              dropLng: true,
+              payoutAmount: true,
+              priority: true,
+              estimatedDuration: true,
+              actualDuration: true,
+              assignedAt: true,
+              pickedUpAt: true,
+              deliveredAt: true,
+              cancelledAt: true,
+              cancellationReason: true,
+              createdAt: true,
+              updatedAt: true,
+              agent: {
                 select: {
                   id: true,
-                  name: true,
-                  email: true,
-                  phone: true,
+                  vehicleType: true,
+                  rating: true,
+                  user: {
+                    select: {
+                      id: true,
+                      name: true,
+                      email: true,
+                      phone: true,
+                    },
+                  },
                 },
               },
-            },
-          },
-          partner: {
-            include: {
-              user: {
+              partner: {
                 select: {
-                  name: true,
+                  id: true,
+                  companyName: true,
                 },
               },
             },
-          },
-        },
-      });
+          });
+        } else {
+          throw error;
+        }
+      }
 
       if (!order) {
         return res.status(404).json({ error: 'Order not found' });
       }
 
       // Check and update delayed status
-      const { delayCheckerService } = await import('../services/delay-checker.service');
-      await delayCheckerService.checkOrderDelay(orderId);
+      try {
+        const { delayCheckerService } = await import('../services/delay-checker.service');
+        await delayCheckerService.checkOrderDelay(orderId);
+      } catch (error: any) {
+        // Log but don't fail if delay checker service has issues
+        console.warn('[Partner] Delay checker service error:', error.message);
+      }
       
-      // Refresh order to get updated status
-      const refreshedOrder = await prisma.order.findUnique({
-        where: { id: orderId },
-      });
+      // Refresh order to get updated status (using select to avoid non-existent columns)
+      let refreshedOrder = null;
+      try {
+        refreshedOrder = await prisma.order.findUnique({
+          where: { id: orderId },
+          select: {
+            id: true,
+            status: true,
+            pickedUpAt: true,
+            estimatedDuration: true,
+          },
+        });
+      } catch (error: any) {
+        console.warn('[Partner] Error refreshing order:', error.message);
+      }
       
       // Calculate timing information
-      const timing = delayCheckerService.getOrderTiming({
-        pickedUpAt: refreshedOrder?.pickedUpAt || order.pickedUpAt,
-        estimatedDuration: refreshedOrder?.estimatedDuration || order.estimatedDuration,
-      });
+      let timing = {
+        elapsedMinutes: 0,
+        remainingMinutes: 0,
+        isDelayed: false,
+        elapsedTime: '0m',
+        remainingTime: '0m',
+      };
+      try {
+        const { delayCheckerService } = await import('../services/delay-checker.service');
+        timing = delayCheckerService.getOrderTiming({
+          pickedUpAt: refreshedOrder?.pickedUpAt || order.pickedUpAt,
+          estimatedDuration: refreshedOrder?.estimatedDuration || order.estimatedDuration,
+        });
+      } catch (error: any) {
+        console.warn('[Partner] Error calculating timing:', error.message);
+      }
+
+      // If barcode/qrCode weren't fetched in main query, try to get them separately
+      if (barcode === undefined && qrCode === undefined) {
+        try {
+          const orderWithCodes = await prisma.order.findUnique({
+            where: { id: orderId },
+            select: {
+              barcode: true,
+              qrCode: true,
+            },
+          });
+          barcode = orderWithCodes?.barcode || null;
+          qrCode = orderWithCodes?.qrCode || null;
+        } catch (error: any) {
+          // Columns might not exist, that's okay
+          console.warn('[Partner] Could not fetch barcode/qrCode:', error.message);
+          barcode = null;
+          qrCode = null;
+        }
+      }
+      
+      // If barcode/qrCode are null or missing, try to generate them
+      if (order && (!barcode || !qrCode)) {
+        try {
+          const { barcodeService } = await import('../services/barcode.service');
+          await barcodeService.assignBarcodeToOrder(order.id);
+          // Fetch again after assignment
+          try {
+            const orderWithCodes = await prisma.order.findUnique({
+              where: { id: orderId },
+              select: {
+                barcode: true,
+                qrCode: true,
+              },
+            });
+            if (orderWithCodes) {
+              barcode = orderWithCodes.barcode || barcode;
+              qrCode = orderWithCodes.qrCode || qrCode;
+            }
+          } catch (fetchError: any) {
+            console.warn('[Partner] Could not fetch barcode/qrCode after generation:', fetchError.message);
+          }
+        } catch (error: any) {
+          console.warn('[Partner] Could not generate barcode/qrCode:', error.message);
+        }
+      }
 
       res.json({
         id: order.id,
         trackingNumber: order.id.substring(0, 8).toUpperCase(),
-        status: order.status,
+        status: refreshedOrder?.status || order.status,
         pickup: {
           latitude: order.pickupLat,
           longitude: order.pickupLng,
@@ -469,6 +797,8 @@ export const partnerController = {
         cancellationReason: order.cancellationReason,
         createdAt: order.createdAt.toISOString(),
         updatedAt: order.updatedAt.toISOString(),
+        barcode: barcode,
+        qrCode: qrCode,
         timing: {
           elapsedMinutes: timing.elapsedMinutes,
           remainingMinutes: timing.remainingMinutes,
@@ -509,23 +839,109 @@ export const partnerController = {
         dropLat,
         dropLng,
         payoutAmount,
+        orderAmount, // What partner charges customer
+        orderType = 'ON_DEMAND', // ON_DEMAND or B2B_BULK
+        commissionRate, // Optional custom commission rate
         priority = 'NORMAL',
         estimatedDuration,
       } = req.body;
 
-      // Create order
-      const order = await prisma.order.create({
-        data: {
-          partnerId: partner.partnerId,
-          pickupLat,
-          pickupLng,
-          dropLat,
-          dropLng,
-          payoutAmount,
-          priority,
-          estimatedDuration,
-          status: 'SEARCHING_AGENT',
-        },
+      // Validate commission rate based on order type
+      let finalCommissionRate = commissionRate;
+      if (!finalCommissionRate) {
+        // Default commission rates
+        finalCommissionRate = orderType === 'B2B_BULK' ? 10 : 20; // 10% for B2B, 20% for ON_DEMAND
+      } else {
+        // Validate commission rate is within allowed range
+        if (orderType === 'B2B_BULK') {
+          finalCommissionRate = Math.max(8, Math.min(12, finalCommissionRate)); // 8-12% for B2B
+        } else {
+          finalCommissionRate = Math.max(15, Math.min(30, finalCommissionRate)); // 15-30% for ON_DEMAND
+        }
+      }
+
+      // Calculate order amount if not provided (default: payoutAmount * 1.25 for 25% partner markup)
+      const finalOrderAmount = orderAmount || (payoutAmount * 1.25);
+
+      // Create order first
+      // Try with all fields first, fallback to basic fields if columns don't exist
+      let order;
+      try {
+        order = await prisma.order.create({
+          data: {
+            partnerId: partner.partnerId,
+            pickupLat,
+            pickupLng,
+            dropLat,
+            dropLng,
+            payoutAmount,
+            orderAmount: finalOrderAmount,
+            orderType: orderType as 'ON_DEMAND' | 'B2B_BULK',
+            commissionRate: finalCommissionRate,
+            priority,
+            estimatedDuration,
+            status: 'SEARCHING_AGENT',
+          },
+        });
+      } catch (createError: any) {
+        // If columns don't exist (P2021/P2022), create order without them
+        if (createError?.code === 'P2021' || createError?.code === 'P2022' || 
+            createError?.message?.includes('orderAmount') || 
+            createError?.message?.includes('commissionRate') ||
+            createError?.message?.includes('orderType')) {
+          console.warn('[Partner API] Order columns missing, creating order without revenue fields:', createError.message);
+          
+          // Try creating with minimal fields - catch any additional missing column errors
+          try {
+            order = await prisma.order.create({
+              data: {
+                partnerId: partner.partnerId,
+                pickupLat,
+                pickupLng,
+                dropLat,
+                dropLng,
+                payoutAmount,
+                priority,
+                estimatedDuration,
+                status: 'SEARCHING_AGENT',
+              },
+            });
+          } catch (fallbackError: any) {
+            // If even basic fields fail, try with absolute minimum
+            if (fallbackError?.code === 'P2021' || fallbackError?.code === 'P2022' || 
+                fallbackError?.message?.includes('does not exist') ||
+                fallbackError?.message?.includes('priority') ||
+                fallbackError?.message?.includes('estimatedDuration')) {
+              console.warn('[Partner API] Additional columns missing, trying absolute minimum fields:', fallbackError.message);
+              order = await prisma.order.create({
+                data: {
+                  partnerId: partner.partnerId,
+                  pickupLat,
+                  pickupLng,
+                  dropLat,
+                  dropLng,
+                  payoutAmount,
+                  status: 'SEARCHING_AGENT',
+                },
+              });
+            } else {
+              // Re-throw if it's a different error
+              throw fallbackError;
+            }
+          }
+        } else {
+          // Re-throw if it's a different error
+          throw createError;
+        }
+      }
+
+      // Generate and assign barcode/QR code after order creation
+      const { barcodeService } = await import('../services/barcode.service');
+      await barcodeService.assignBarcodeToOrder(order.id);
+
+      // Fetch updated order with barcode/QR
+      const orderWithBarcode = await prisma.order.findUnique({
+        where: { id: order.id },
       });
 
       // Notify partner via webhook
@@ -681,9 +1097,21 @@ export const partnerController = {
       const updatedOrder = await prisma.order.update({
         where: { id: orderId },
         data: updateData,
-        include: {
+        select: {
+          id: true,
+          status: true,
+          pickupLat: true,
+          pickupLng: true,
+          dropLat: true,
+          dropLng: true,
+          payoutAmount: true,
+          priority: true,
+          estimatedDuration: true,
+          createdAt: true,
+          updatedAt: true,
           partner: {
-            include: {
+            select: {
+              id: true,
               user: {
                 select: {
                   name: true,
@@ -1091,25 +1519,52 @@ export const partnerController = {
         where.status = status;
       }
 
-      const [tickets, total] = await Promise.all([
-        prisma.supportTicket.findMany({
-          where,
-          include: {
-            order: {
-              select: {
-                id: true,
-                status: true,
+      let tickets: any[] = [];
+      let total = 0;
+
+      try {
+        [tickets, total] = await Promise.all([
+          prisma.supportTicket.findMany({
+            where,
+            select: {
+              id: true,
+              issueType: true,
+              description: true,
+              status: true,
+              resolvedAt: true,
+              createdAt: true,
+              updatedAt: true,
+              order: {
+                select: {
+                  id: true,
+                  status: true,
+                },
               },
             },
-          },
-          orderBy: {
-            createdAt: 'desc',
-          },
-          skip,
-          take: limitNum,
-        }),
-        prisma.supportTicket.count({ where }),
-      ]);
+            orderBy: {
+              createdAt: 'desc',
+            },
+            skip,
+            take: limitNum,
+          }),
+          prisma.supportTicket.count({ where }),
+        ]);
+      } catch (error: any) {
+        // Handle missing SupportTicket table
+        if (error.code === 'P2021' || error.code === '42P01' || error.message?.includes('does not exist')) {
+          console.warn('[Partner] SupportTicket table does not exist, returning empty results');
+          return res.json({
+            tickets: [],
+            pagination: {
+              page: pageNum,
+              limit: limitNum,
+              total: 0,
+              totalPages: 0,
+            },
+          });
+        }
+        throw error;
+      }
 
       res.json({
         tickets: tickets.map((ticket: any) => ({

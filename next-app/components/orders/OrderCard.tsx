@@ -155,7 +155,7 @@ export function OrderCard({
         {/* Customer/Courier - Compact */}
         {(customer || courier) && (
           <div className="flex items-center gap-3 mb-4 pb-4 border-b border-gray-100">
-            <div className="h-9 w-9 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center overflow-hidden flex-shrink-0">
+            <div className="h-9 w-9 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center overflow-hidden shrink-0">
               {(customer?.avatar || courier?.avatar) ? (
                 <img
                   src={customer?.avatar || courier?.avatar}
@@ -176,7 +176,7 @@ export function OrderCard({
             </div>
             {(customer?.phone || courier?.phone) && (
               <button 
-                className="p-2 rounded-lg hover:bg-gray-100 transition-colors flex-shrink-0"
+                className="p-2 rounded-lg hover:bg-gray-100 transition-colors shrink-0"
                 onClick={(e) => {
                   e.stopPropagation();
                   // Handle phone call

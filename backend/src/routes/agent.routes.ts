@@ -3,6 +3,11 @@ import { authenticate } from '../middleware/auth.middleware';
 import { requireAgent, requireAgentOrAdmin } from '../middleware/role.middleware';
 import { validate } from '../middleware/validation.middleware';
 import { agentController } from '../controllers/agent.controller';
+import { scanningController } from '../controllers/scanning.controller';
+import { verificationController } from '../controllers/verification.controller';
+import { paymentController } from '../controllers/payment.controller';
+import { scheduleController } from '../controllers/schedule.controller';
+import { walletController } from '../controllers/wallet.controller';
 import { uploadSingle } from '../middleware/upload.middleware';
 import {
   updateLocationSchema,
@@ -77,4 +82,31 @@ router.delete('/documents/:id', requireAgent, agentController.deleteDocument);
 router.get('/support/tickets', requireAgent, agentController.getSupportTickets);
 router.post('/support/tickets', requireAgent, agentController.createSupportTicket);
 
-export default router;
+// Barcode/QR Scanning
+router.post('/scan/barcode', requireAgent, scanningController.scanBarcode);
+router.post('/scan/qr', requireAgent, scanningController.scanQRCode);
+
+// Delivery Verification
+router.post('/orders/:id/generate-verification', requireAgent, verificationController.generateVerification);
+router.post('/orders/:id/verify-otp', requireAgent, verificationController.verifyWithOTP);
+router.post('/orders/:id/verify-qr', requireAgent, verificationController.verifyWithQR);
+router.get('/orders/:id/verification', requireAgent, verificationController.getVerification);
+
+// Payments & Payroll
+router.get('/payments', requireAgent, paymentController.getPayments);
+router.get('/payments/summary', requireAgent, paymentController.getPaymentSummary);
+router.get('/payrolls', requireAgent, paymentController.getPayrolls);
+router.post('/payrolls/calculate', requireAgent, paymentController.calculatePayroll);
+
+    // Schedule & Calendar
+    router.post('/schedule', requireAgent, scheduleController.setSchedule);
+    router.get('/schedule', requireAgent, scheduleController.getSchedule);
+    router.get('/schedule/availability', requireAgent, scheduleController.checkAvailability);
+    router.get('/calendar', requireAgent, scheduleController.getCalendar);
+
+    // Wallet & Payouts
+    router.get('/wallet', requireAgent, walletController.getAgentWallet);
+    router.get('/wallet/transactions', requireAgent, walletController.getAgentWalletTransactions);
+    router.get('/payouts', requireAgent, walletController.getAgentPayouts);
+
+    export default router;

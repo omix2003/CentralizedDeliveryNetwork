@@ -43,6 +43,7 @@ export const delayCheckerService = {
           await prisma.order.update({
             where: { id: order.id },
             data: { status: 'DELAYED' },
+            select: { id: true, status: true }, // Only select fields we need
           });
           delayedOrders.push(order.id);
         }
@@ -95,6 +96,7 @@ export const delayCheckerService = {
         await prisma.order.update({
           where: { id: orderId },
           data: { status: 'DELAYED' },
+          select: { id: true, status: true }, // Only select fields we need
         });
         console.log(`[Delay Checker] Order ${orderId} marked as DELAYED (${elapsedMinutes} min > ${order.estimatedDuration} min)`);
         return true;
@@ -105,6 +107,7 @@ export const delayCheckerService = {
         await prisma.order.update({
           where: { id: orderId },
           data: { status: 'OUT_FOR_DELIVERY' },
+          select: { id: true, status: true }, // Only select fields we need
         });
         console.log(`[Delay Checker] Order ${orderId} reverted from DELAYED to OUT_FOR_DELIVERY`);
         return false;

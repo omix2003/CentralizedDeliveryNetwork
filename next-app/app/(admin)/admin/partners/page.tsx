@@ -168,7 +168,7 @@ export default function PartnersManagementPage() {
                                 />
                               ) : null}
                               <div
-                                className={`w-10 h-10 rounded-full bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center text-white font-semibold text-sm ${partner.user.profilePicture ? 'hidden' : 'flex'}`}
+                                className={`w-10 h-10 rounded-full bg-linear-to-br from-orange-500 to-red-600 flex items-center justify-center text-white font-semibold text-sm ${partner.user.profilePicture ? 'hidden' : 'flex'}`}
                               >
                                 <Building2 className="h-5 w-5" />
                               </div>
@@ -193,7 +193,7 @@ export default function PartnersManagementPage() {
                                 />
                               ) : null}
                               <div
-                                className={`w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-xs ${partner.user.profilePicture ? 'hidden' : 'flex'}`}
+                                className={`w-8 h-8 rounded-full bg-linear-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-xs ${partner.user.profilePicture ? 'hidden' : 'flex'}`}
                               >
                                 {partner.user.name.charAt(0).toUpperCase()}
                               </div>

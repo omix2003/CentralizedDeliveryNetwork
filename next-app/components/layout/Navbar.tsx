@@ -19,17 +19,17 @@ export const Navbar = () => {
     const isActive = (path: string) => pathname === path;
 
     return (
-        <nav className="fixed top-0 left-0 right-0 z-[60] bg-[#0f172a]/90 backdrop-blur-lg border-b border-white/10 transition-all duration-300">
+        <nav className="fixed top-0 left-0 right-0 z-[100] bg-slate-900 backdrop-blur-lg border-b border-white/10 transition-all duration-300 shadow-lg" style={{ backgroundColor: '#0f172a', position: 'fixed', top: 0, left: 0, right: 0, width: '100%' }}>
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex items-center justify-between h-16">
                     {/* Logo */}
                     <div className="flex-shrink-0">
                         <Link href="/" className="flex items-center gap-2 group">
-                            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary-500 to-secondary-600 flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-primary-500/20 group-hover:shadow-primary-500/40 transition-all duration-300">
+                            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-blue-500/20 group-hover:shadow-blue-500/40 transition-all duration-300">
                                 D
                             </div>
-                            <span className="font-heading font-bold text-xl tracking-tight text-white">
-                                Delivery<span className="text-gradient">Hub</span>
+                            <span className="font-heading font-bold text-xl tracking-tight text-white !text-white">
+                                Delivery<span className="bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">Hub</span>
                             </span>
                         </Link>
                     </div>
@@ -42,8 +42,8 @@ export const Navbar = () => {
                                     key={link.name}
                                     href={link.href}
                                     className={`px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 ${isActive(link.href)
-                                        ? 'text-white bg-white/10 shadow-sm'
-                                        : 'text-slate-300 hover:text-white hover:bg-white/5'
+                                        ? '!text-white bg-white/10 shadow-sm'
+                                        : '!text-slate-300 hover:!text-white hover:bg-white/5'
                                         }`}
                                 >
                                     {link.name}
@@ -55,7 +55,7 @@ export const Navbar = () => {
                     {/* Action Buttons */}
                     <div className="hidden md:flex items-center gap-3">
                         <Link href="/login">
-                            <Button variant="ghost" size="sm" className="text-white hover:text-white hover:bg-white/10">Log In</Button>
+                            <Button variant="ghost" size="sm" className="!text-white hover:!text-white hover:bg-white/10">Log In</Button>
                         </Link>
                         <Link href="/register">
                             <Button variant="premium" size="sm">Get Started</Button>

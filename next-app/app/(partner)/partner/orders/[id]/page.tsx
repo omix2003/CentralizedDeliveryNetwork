@@ -31,12 +31,20 @@ import { Star } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils/currency';
 import { OrderTimer } from '@/components/orders/OrderTimer';
 import { DelayedBadge } from '@/components/orders/DelayedBadge';
+import { OrderBarcode } from '@/components/orders/OrderBarcode';
+import { OrderQRCode } from '@/components/orders/OrderQRCode';
 
 // Lazy load Google Places Autocomplete
 const GooglePlacesAutocomplete = dynamic(
   () => import('@/components/maps/GooglePlacesAutocomplete').then(mod => ({ default: mod.GooglePlacesAutocomplete })),
   { ssr: false }
 );
+
+// Dynamically import map component to avoid SSR issues
+const OrderTrackingMap = dynamic(() => import('@/components/maps/OrderTrackingMap').then(mod => ({ default: mod.OrderTrackingMap })), {
+  ssr: false,
+  loading: () => <div className="h-64 bg-gray-100 rounded-lg animate-pulse" />
+});
 
 export default function OrderDetailsPage() {
   const params = useParams();
@@ -226,6 +234,12 @@ export default function OrderDetailsPage() {
     return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
   };
 
+  const isValidCoordinate = (lat: number, lng: number) => {
+    return lat !== null && lat !== undefined && lng !== null && lng !== undefined &&
+           !isNaN(lat) && !isNaN(lng) &&
+           lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+  };
+
   if (loading && !order) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -354,6 +368,32 @@ export default function OrderDetailsPage() {
                   deliveredAt={order.deliveredAt}
                   timing={order.timing}
                 />
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Map */}
+          {isValidCoordinate(order.pickup.latitude, order.pickup.longitude) &&
+           isValidCoordinate(order.dropoff.latitude, order.dropoff.longitude) && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Route Map</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="h-96 rounded-lg overflow-hidden">
+                  <OrderTrackingMap
+                    pickup={{
+                      longitude: order.pickup.longitude,
+                      latitude: order.pickup.latitude,
+                    }}
+                    dropoff={{
+                      longitude: order.dropoff.longitude,
+                      latitude: order.dropoff.latitude,
+                    }}
+                    height="100%"
+                    showRoute={true}
+                  />
+                </div>
               </CardContent>
             </Card>
           )}
@@ -715,6 +755,22 @@ export default function OrderDetailsPage() {
               </Button>
             </CardContent>
           </Card>
+
+          {/* Barcode & QR Code */}
+          {order.barcode && (
+            <OrderBarcode
+              barcode={order.barcode}
+              orderId={order.id}
+              trackingNumber={order.trackingNumber}
+            />
+          )}
+          {order.qrCode && (
+            <OrderQRCode
+              qrCode={order.qrCode}
+              orderId={order.id}
+              trackingNumber={order.trackingNumber}
+            />
+          )}
 
           {/* Support Ticket Form */}
           <Card>

@@ -436,7 +436,7 @@ export default function AgentOrdersPage() {
 
                 {/* Partner Info */}
                 <div className="flex items-center gap-3 mb-4 pb-4 border-b border-gray-100">
-                  <div className="h-9 w-9 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center">
+                  <div className="h-9 w-9 rounded-full bg-linear-to-br from-blue-500 to-purple-500 flex items-center justify-center">
                     <span className="text-sm font-semibold text-white">
                       {order.partner.name[0].toUpperCase()}
                     </span>

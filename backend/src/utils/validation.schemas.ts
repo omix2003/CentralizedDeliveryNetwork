@@ -47,6 +47,9 @@ export const createOrderSchema= z.object({
     dropLat: z.number().min(-90).max(90),
     dropLng: z.number().min(-180).max(180),
     payoutAmount: z.number().positive('Payout amount must be positive'),
+    orderAmount: z.number().positive('Order amount must be positive').optional(), // What partner charges customer
+    orderType: z.enum(['ON_DEMAND', 'B2B_BULK']).optional().default('ON_DEMAND'), // Order type for commission calculation
+    commissionRate: z.number().min(0).max(100).optional(), // Custom commission rate (overrides default)
     priority: z.enum(['HIGH', 'NORMAL','LOW']).optional().default('NORMAL'),
     estimatedDuration: z.number().int().positive().optional(),
 });
@@ -75,6 +78,9 @@ export const updateOrderSchema = z.object({
     dropLat: z.number().min(-90).max(90).optional(),
     dropLng: z.number().min(-180).max(180).optional(),
     payoutAmount: z.number().positive('Payout amount must be positive').optional(),
+    orderAmount: z.number().positive('Order amount must be positive').optional(),
+    orderType: z.enum(['ON_DEMAND', 'B2B_BULK']).optional(),
+    commissionRate: z.number().min(0).max(100).optional(),
     priority: z.enum(['HIGH', 'NORMAL', 'LOW']).optional(),
     estimatedDuration: z.number().int().positive().optional(),
 });

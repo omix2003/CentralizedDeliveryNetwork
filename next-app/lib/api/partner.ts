@@ -56,6 +56,8 @@ export interface Order {
   createdAt: string;
   updatedAt?: string;
   timing?: OrderTiming;
+  barcode?: string;
+  qrCode?: string;
   agent?: {
     id?: string;
     name: string;
@@ -75,6 +77,45 @@ export interface OrdersResponse {
   total: number;
   limit: number;
   offset: number;
+}
+
+export interface RevenueSummary {
+  totalRevenue: number;
+  totalOrders: number;
+  completedOrders: number;
+  cancelledOrders: number;
+  averageOrderValue: number;
+  platformFees: number;
+  agentPayouts: number;
+}
+
+export interface PartnerRevenue {
+  id: string;
+  partnerId: string;
+  orderId: string;
+  orderAmount: number;
+  deliveryFee: number;
+  platformFee: number;
+  netRevenue: number;
+  status: string;
+  processedAt: string | null;
+  periodStart: string;
+  periodEnd: string;
+  periodType: string;
+  createdAt: string;
+  order: {
+    id: string;
+    status: string;
+    createdAt: string;
+  };
+}
+
+export interface RevenueResponse {
+  revenues: PartnerRevenue[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
 }
 
 export const partnerApi = {
@@ -165,6 +206,26 @@ export const partnerApi = {
     description: string;
   }) => {
     const response = await apiClient.post('/partner/support/tickets', data);
+    return response.data;
+  },
+
+  // Revenue endpoints
+  getRevenueSummary: async (startDate?: string, endDate?: string): Promise<RevenueSummary> => {
+    const params: any = {};
+    if (startDate) params.startDate = startDate;
+    if (endDate) params.endDate = endDate;
+    const response = await apiClient.get<RevenueSummary>('/partner/revenue/summary', { params });
+    return response.data;
+  },
+
+  getRevenue: async (params?: {
+    startDate?: string;
+    endDate?: string;
+    periodType?: 'DAILY' | 'WEEKLY' | 'MONTHLY';
+    page?: number;
+    limit?: number;
+  }): Promise<RevenueResponse> => {
+    const response = await apiClient.get<RevenueResponse>('/partner/revenue', { params });
     return response.data;
   },
 };
