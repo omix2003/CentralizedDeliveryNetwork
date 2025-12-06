@@ -6,6 +6,12 @@ import { PrismaClient } from '@prisma/client';
 
 const globalForPrisma = global as unknown as { prisma: PrismaClient };
 
+// Validate DATABASE_URL is set
+if (!process.env.DATABASE_URL) {
+  console.error('❌ DATABASE_URL environment variable is not set!');
+  console.error('⚠️  Database operations will fail. Please set DATABASE_URL in your environment variables.');
+}
+
 export const prisma =
   globalForPrisma.prisma ||
   new PrismaClient({
@@ -16,7 +22,17 @@ export const prisma =
         url: process.env.DATABASE_URL,
       },
     },
+    // Add error formatting for better error messages
+    errorFormat: 'pretty',
   });
+
+// Handle Prisma connection errors
+prisma.$on('error' as never, (e: any) => {
+  console.error('Prisma Client Error:', {
+    message: e.message,
+    target: e.target,
+  });
+});
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
 

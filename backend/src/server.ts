@@ -20,6 +20,31 @@ import ratingRoutes from './routes/rating.routes';
 // Load environment variables
 dotenv.config();
 
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  // Log the error but don't crash the server
+  if (reason instanceof Error) {
+    console.error('Error details:', {
+      name: reason.name,
+      message: reason.message,
+      stack: reason.stack,
+    });
+  }
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error: Error) => {
+  console.error('Uncaught Exception:', error);
+  console.error('Error details:', {
+    name: error.name,
+    message: error.message,
+    stack: error.stack,
+  });
+  // In production, you might want to gracefully shutdown
+  // For now, we'll just log it
+});
+
 const app = express();
 const httpServer = http.createServer(app);
 const PORT = process.env.PORT || 5000;
@@ -310,10 +335,20 @@ app.use((req, res) => {
 // Check database connection and verify AgentRating table exists, run migrations if needed
 (async () => {
   try {
+    // Test database connection
+    await prisma.$connect();
+    console.log('✅ Database connection established');
+    
     // Simple check to verify AgentRating table exists
     await prisma.$queryRaw`SELECT 1 FROM "AgentRating" LIMIT 1`;
     console.log('✅ AgentRating table exists');
   } catch (error: any) {
+    console.error('❌ Database connection or verification failed:', {
+      code: error?.code,
+      message: error?.message,
+      name: error?.name,
+    });
+    
     if (error?.code === 'P2021' || error?.message?.includes('does not exist')) {
       console.error('❌ AgentRating table does not exist!');
       console.error('⚠️  Attempting to run migrations automatically...');
@@ -342,8 +377,13 @@ app.use((req, res) => {
         });
         console.error('⚠️  Please ensure migrations run during build or add to start command');
       }
+    } else if (error?.code === 'P1001' || error?.message?.includes('Can\'t reach database server')) {
+      console.error('❌ Cannot connect to database server!');
+      console.error('⚠️  Please check DATABASE_URL environment variable');
+      console.error('⚠️  Server will continue to start but database operations will fail');
     } else {
-      console.log('ℹ️  Could not verify AgentRating table:', error?.message);
+      console.error('⚠️  Database connection issue:', error?.message);
+      console.error('⚠️  Server will continue to start but database operations may fail');
     }
   }
 })();

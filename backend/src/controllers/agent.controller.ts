@@ -696,9 +696,15 @@ export const agentController = {
       const { delayCheckerService } = await import('../services/delay-checker.service');
       await delayCheckerService.checkOrderDelay(orderId);
       
-      // Refresh order to get updated status
+      // Refresh order to get updated status (using select to avoid missing columns)
       const refreshedOrder = await prisma.order.findUnique({
         where: { id: orderId },
+        select: {
+          id: true,
+          status: true,
+          pickedUpAt: true,
+          estimatedDuration: true,
+        },
       });
       
       // Calculate timing information
