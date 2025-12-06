@@ -895,6 +895,9 @@ export const agentController = {
           partnerId: true,
           cancellationReason: true,
           cancelledAt: true,
+          pickedUpAt: true,
+          deliveredAt: true,
+          payoutAmount: true,
         },
       });
 
