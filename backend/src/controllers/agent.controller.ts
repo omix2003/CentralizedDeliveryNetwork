@@ -692,26 +692,62 @@ export const agentController = {
         return res.status(403).json({ error: 'You do not have permission to view this order' });
       }
 
-      // Check and update delayed status
-      const { delayCheckerService } = await import('../services/delay-checker.service');
-      await delayCheckerService.checkOrderDelay(orderId);
-      
-      // Refresh order to get updated status (using select to avoid missing columns)
-      const refreshedOrder = await prisma.order.findUnique({
-        where: { id: orderId },
-        select: {
-          id: true,
-          status: true,
-          pickedUpAt: true,
-          estimatedDuration: true,
-        },
-      });
-      
-      // Calculate timing information
-      const timing = delayCheckerService.getOrderTiming({
-        pickedUpAt: refreshedOrder?.pickedUpAt || order.pickedUpAt,
-        estimatedDuration: refreshedOrder?.estimatedDuration || order.estimatedDuration,
-      });
+      // Check and update delayed status (with error handling)
+      let refreshedOrder = null;
+      let timing = {
+        elapsedMinutes: 0,
+        remainingMinutes: order.estimatedDuration || 0,
+        isDelayed: false,
+        elapsedTime: '0:00',
+        remainingTime: order.estimatedDuration ? `${order.estimatedDuration}:00` : 'N/A',
+      };
+
+      try {
+        const { delayCheckerService } = await import('../services/delay-checker.service');
+        await delayCheckerService.checkOrderDelay(orderId);
+        
+        // Refresh order to get updated status (using select to avoid missing columns)
+        refreshedOrder = await prisma.order.findUnique({
+          where: { id: orderId },
+          select: {
+            id: true,
+            status: true,
+            pickedUpAt: true,
+            estimatedDuration: true,
+          },
+        });
+        
+        // Calculate timing information
+        timing = delayCheckerService.getOrderTiming({
+          pickedUpAt: refreshedOrder?.pickedUpAt || order.pickedUpAt,
+          estimatedDuration: refreshedOrder?.estimatedDuration || order.estimatedDuration,
+        });
+      } catch (delayError: any) {
+        // Log error but don't fail the request
+        console.error('[Agent Controller] Error checking order delay:', delayError?.message);
+        // Use order data directly for timing
+        if (order.pickedUpAt && order.estimatedDuration) {
+          const now = new Date();
+          const elapsedMs = now.getTime() - order.pickedUpAt.getTime();
+          const elapsedMinutes = Math.floor(elapsedMs / 60000);
+          const remainingMinutes = Math.max(0, order.estimatedDuration - elapsedMinutes);
+          const isDelayed = elapsedMinutes > order.estimatedDuration;
+          
+          const formatTime = (minutes: number) => {
+            const hrs = Math.floor(minutes / 60);
+            const mins = minutes % 60;
+            return hrs > 0 ? `${hrs}:${mins.toString().padStart(2, '0')}` : `${mins}:00`;
+          };
+          
+          timing = {
+            elapsedMinutes,
+            remainingMinutes,
+            isDelayed,
+            elapsedTime: formatTime(elapsedMinutes),
+            remainingTime: formatTime(remainingMinutes),
+          };
+        }
+      }
 
       // Format order for response
       const formattedOrder = {
