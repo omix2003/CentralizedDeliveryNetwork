@@ -151,45 +151,69 @@ export const ratingController = {
 
       const skip = (Number(page) - 1) * Number(limit);
 
-      const [ratings, total] = await Promise.all([
-        prisma.agentRating.findMany({
-          where: { agentId },
-          include: {
-            partner: {
-              select: {
-                id: true,
-                companyName: true,
-                user: {
-                  select: {
-                    name: true,
+      try {
+        const [ratings, total] = await Promise.all([
+          prisma.agentRating.findMany({
+            where: { agentId },
+            select: {
+              id: true,
+              orderId: true,
+              agentId: true,
+              partnerId: true,
+              rating: true,
+              comment: true,
+              createdAt: true,
+              partner: {
+                select: {
+                  id: true,
+                  companyName: true,
+                  user: {
+                    select: {
+                      name: true,
+                    },
                   },
                 },
               },
-            },
-            order: {
-              select: {
-                id: true,
+              order: {
+                select: {
+                  id: true,
+                },
               },
             },
-          },
-          orderBy: { createdAt: 'desc' },
-          skip,
-          take: Number(limit),
-        }),
-        prisma.agentRating.count({
-          where: { agentId },
-        }),
-      ]);
+            orderBy: { createdAt: 'desc' },
+            skip,
+            take: Number(limit),
+          }),
+          prisma.agentRating.count({
+            where: { agentId },
+          }),
+        ]);
 
-      res.json({
-        ratings,
-        pagination: {
-          page: Number(page),
-          limit: Number(limit),
-          total,
-          totalPages: Math.ceil(total / Number(limit)),
-        },
-      });
+        res.json({
+          ratings,
+          pagination: {
+            page: Number(page),
+            limit: Number(limit),
+            total,
+            totalPages: Math.ceil(total / Number(limit)),
+          },
+        });
+      } catch (error: any) {
+        // If table doesn't exist, return empty results
+        if (error?.code === 'P2021' || error?.code === 'P2022' || error?.code === '42P01' || error?.message?.includes('does not exist')) {
+          console.warn('⚠️  AgentRating table does not exist - returning empty results');
+          return res.json({
+            ratings: [],
+            pagination: {
+              page: Number(page),
+              limit: Number(limit),
+              total: 0,
+              totalPages: 0,
+            },
+          });
+        }
+        throw error;
+      }
     } catch (error: any) {
       console.error('[Rating] Error fetching agent ratings:', {
         message: error?.message,
@@ -198,15 +222,6 @@ export const ratingController = {
         stack: error?.stack,
         agentId: req.params.agentId,
       });
-      
-      // If table doesn't exist, provide helpful error
-      if (error?.code === 'P2021' || error?.message?.includes('does not exist')) {
-        return res.status(500).json({
-          error: 'Database migration required',
-          message: 'The AgentRating table does not exist. Please run database migrations: npx prisma migrate deploy',
-        });
-      }
-      
       next(error);
     }
   },

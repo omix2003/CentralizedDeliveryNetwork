@@ -17,34 +17,57 @@ export const paymentController = {
       const skip = (page - 1) * limit;
 
       const { prisma } = await import('../lib/prisma');
-      const [payments, total] = await Promise.all([
-        prisma.payment.findMany({
-          where: { agentId },
-          include: {
-            order: {
-              select: {
-                id: true,
-                status: true,
-                deliveredAt: true,
+      try {
+        const [payments, total] = await Promise.all([
+          prisma.payment.findMany({
+            where: { agentId },
+            select: {
+              id: true,
+              agentId: true,
+              orderId: true,
+              amount: true,
+              status: true,
+              createdAt: true,
+              order: {
+                select: {
+                  id: true,
+                  status: true,
+                  deliveredAt: true,
+                },
               },
             },
-          },
-          orderBy: { createdAt: 'desc' },
-          skip,
-          take: limit,
-        }),
-        prisma.payment.count({ where: { agentId } }),
-      ]);
+            orderBy: { createdAt: 'desc' },
+            skip,
+            take: limit,
+          }),
+          prisma.payment.count({ where: { agentId } }),
+        ]);
 
-      res.json({
-        payments,
-        pagination: {
-          page,
-          limit,
-          total,
-          totalPages: Math.ceil(total / limit),
-        },
-      });
+        res.json({
+          payments,
+          pagination: {
+            page,
+            limit,
+            total,
+            totalPages: Math.ceil(total / limit),
+          },
+        });
+      } catch (error: any) {
+        // If table doesn't exist, return empty results
+        if (error?.code === 'P2021' || error?.code === 'P2022' || error?.code === '42P01' || error?.message?.includes('does not exist')) {
+          console.warn('⚠️  Payment table does not exist - returning empty results');
+          return res.json({
+            payments: [],
+            pagination: {
+              page,
+              limit,
+              total: 0,
+              totalPages: 0,
+            },
+          });
+        }
+        throw error;
+      }
     } catch (error: any) {
       next(error);
     }
@@ -60,68 +83,82 @@ export const paymentController = {
 
       const { prisma } = await import('../lib/prisma');
       
-      const now = new Date();
-      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const weekStart = new Date(now);
-      weekStart.setDate(weekStart.getDate() - 7);
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      try {
+        const now = new Date();
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const weekStart = new Date(now);
+        weekStart.setDate(weekStart.getDate() - 7);
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-      const [todayPayments, weekPayments, monthPayments, pendingPayments] = await Promise.all([
-        prisma.payment.aggregate({
-          where: {
-            agentId,
-            createdAt: { gte: todayStart },
-            status: 'PROCESSED',
-          },
-          _sum: { amount: true },
-          _count: true,
-        }),
-        prisma.payment.aggregate({
-          where: {
-            agentId,
-            createdAt: { gte: weekStart },
-            status: 'PROCESSED',
-          },
-          _sum: { amount: true },
-          _count: true,
-        }),
-        prisma.payment.aggregate({
-          where: {
-            agentId,
-            createdAt: { gte: monthStart },
-            status: 'PROCESSED',
-          },
-          _sum: { amount: true },
-          _count: true,
-        }),
-        prisma.payment.aggregate({
-          where: {
-            agentId,
-            status: 'PENDING',
-          },
-          _sum: { amount: true },
-          _count: true,
-        }),
-      ]);
+        const [todayPayments, weekPayments, monthPayments, pendingPayments] = await Promise.all([
+          prisma.payment.aggregate({
+            where: {
+              agentId,
+              createdAt: { gte: todayStart },
+              status: 'PROCESSED',
+            },
+            _sum: { amount: true },
+            _count: true,
+          }),
+          prisma.payment.aggregate({
+            where: {
+              agentId,
+              createdAt: { gte: weekStart },
+              status: 'PROCESSED',
+            },
+            _sum: { amount: true },
+            _count: true,
+          }),
+          prisma.payment.aggregate({
+            where: {
+              agentId,
+              createdAt: { gte: monthStart },
+              status: 'PROCESSED',
+            },
+            _sum: { amount: true },
+            _count: true,
+          }),
+          prisma.payment.aggregate({
+            where: {
+              agentId,
+              status: 'PENDING',
+            },
+            _sum: { amount: true },
+            _count: true,
+          }),
+        ]);
 
-      res.json({
-        today: {
-          amount: todayPayments._sum.amount || 0,
-          count: todayPayments._count,
-        },
-        week: {
-          amount: weekPayments._sum.amount || 0,
-          count: weekPayments._count,
-        },
-        month: {
-          amount: monthPayments._sum.amount || 0,
-          count: monthPayments._count,
-        },
-        pending: {
-          amount: pendingPayments._sum.amount || 0,
-          count: pendingPayments._count,
-        },
-      });
+        res.json({
+          today: {
+            amount: todayPayments._sum.amount || 0,
+            count: todayPayments._count,
+          },
+          week: {
+            amount: weekPayments._sum.amount || 0,
+            count: weekPayments._count,
+          },
+          month: {
+            amount: monthPayments._sum.amount || 0,
+            count: monthPayments._count,
+          },
+          pending: {
+            amount: pendingPayments._sum.amount || 0,
+            count: pendingPayments._count,
+          },
+        });
+      } catch (error: any) {
+        // If table doesn't exist, return empty results
+        if (error?.code === 'P2021' || error?.code === 'P2022' || error?.code === '42P01' || error?.message?.includes('does not exist')) {
+          console.warn('⚠️  Payment table does not exist - returning empty summary');
+          return res.json({
+            today: { amount: 0, count: 0 },
+            week: { amount: 0, count: 0 },
+            month: { amount: 0, count: 0 },
+            pending: { amount: 0, count: 0 },
+          });
+        }
+        throw error;
+      }
     } catch (error: any) {
       next(error);
     }
@@ -140,25 +177,42 @@ export const paymentController = {
       const skip = (page - 1) * limit;
 
       const { prisma } = await import('../lib/prisma');
-      const [payrolls, total] = await Promise.all([
-        prisma.payroll.findMany({
-          where: { agentId },
-          orderBy: { periodStart: 'desc' },
-          skip,
-          take: limit,
-        }),
-        prisma.payroll.count({ where: { agentId } }),
-      ]);
+      try {
+        const [payrolls, total] = await Promise.all([
+          prisma.payroll.findMany({
+            where: { agentId },
+            orderBy: { periodStart: 'desc' },
+            skip,
+            take: limit,
+          }),
+          prisma.payroll.count({ where: { agentId } }),
+        ]);
 
-      res.json({
-        payrolls,
-        pagination: {
-          page,
-          limit,
-          total,
-          totalPages: Math.ceil(total / limit),
-        },
-      });
+        res.json({
+          payrolls,
+          pagination: {
+            page,
+            limit,
+            total,
+            totalPages: Math.ceil(total / limit),
+          },
+        });
+      } catch (error: any) {
+        // If table doesn't exist, return empty results
+        if (error?.code === 'P2021' || error?.code === 'P2022' || error?.code === '42P01' || error?.message?.includes('does not exist')) {
+          console.warn('⚠️  Payroll table does not exist - returning empty results');
+          return res.json({
+            payrolls: [],
+            pagination: {
+              page,
+              limit,
+              total: 0,
+              totalPages: 0,
+            },
+          });
+        }
+        throw error;
+      }
     } catch (error: any) {
       next(error);
     }

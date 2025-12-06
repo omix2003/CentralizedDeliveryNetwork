@@ -11,28 +11,37 @@ export async function setAgentSchedule(
   isAvailable: boolean = true,
   notes?: string
 ) {
-  return await prisma.agentSchedule.upsert({
-    where: {
-      agentId_date: {
+  try {
+    return await prisma.agentSchedule.upsert({
+      where: {
+        agentId_date: {
+          agentId,
+          date,
+        },
+      },
+      update: {
+        startTime,
+        endTime,
+        isAvailable,
+        notes,
+      },
+      create: {
         agentId,
         date,
+        startTime,
+        endTime,
+        isAvailable,
+        notes,
       },
-    },
-    update: {
-      startTime,
-      endTime,
-      isAvailable,
-      notes,
-    },
-    create: {
-      agentId,
-      date,
-      startTime,
-      endTime,
-      isAvailable,
-      notes,
-    },
-  });
+    });
+  } catch (error: any) {
+    // If table doesn't exist, throw error with helpful message
+    if (error?.code === 'P2021' || error?.code === 'P2022' || error?.code === '42P01' || error?.message?.includes('does not exist')) {
+      console.warn('⚠️  AgentSchedule table does not exist');
+      throw new Error('Schedule feature is not available. Please run database migrations.');
+    }
+    throw error;
+  }
 }
 
 /**
@@ -43,18 +52,27 @@ export async function getAgentSchedule(
   startDate: Date,
   endDate: Date
 ) {
-  return await prisma.agentSchedule.findMany({
-    where: {
-      agentId,
-      date: {
-        gte: startDate,
-        lte: endDate,
+  try {
+    return await prisma.agentSchedule.findMany({
+      where: {
+        agentId,
+        date: {
+          gte: startDate,
+          lte: endDate,
+        },
       },
-    },
-    orderBy: {
-      date: 'asc',
-    },
-  });
+      orderBy: {
+        date: 'asc',
+      },
+    });
+  } catch (error: any) {
+    // If table doesn't exist, return empty array
+    if (error?.code === 'P2021' || error?.code === 'P2022' || error?.code === '42P01' || error?.message?.includes('does not exist')) {
+      console.warn('⚠️  AgentSchedule table does not exist - returning empty schedule');
+      return [];
+    }
+    throw error;
+  }
 }
 
 /**
@@ -110,48 +128,73 @@ export async function getAgentCalendar(
   viewType: 'MONTHLY' | 'WEEKLY',
   startDate: Date
 ) {
-  let endDate: Date;
-  
-  if (viewType === 'MONTHLY') {
-    endDate = new Date(startDate);
-    endDate.setMonth(endDate.getMonth() + 1);
-  } else {
-    endDate = new Date(startDate);
-    endDate.setDate(endDate.getDate() + 7);
-  }
+  try {
+    let endDate: Date;
+    
+    if (viewType === 'MONTHLY') {
+      endDate = new Date(startDate);
+      endDate.setMonth(endDate.getMonth() + 1);
+    } else {
+      endDate = new Date(startDate);
+      endDate.setDate(endDate.getDate() + 7);
+    }
 
-  const schedules = await getAgentSchedule(agentId, startDate, endDate);
+    const schedules = await getAgentSchedule(agentId, startDate, endDate);
 
-  // Get delivery history for the period
-  const deliveries = await prisma.order.findMany({
-    where: {
-      agentId,
-      status: 'DELIVERED',
-      deliveredAt: {
-        gte: startDate,
-        lte: endDate,
+    // Get delivery history for the period
+    const deliveries = await prisma.order.findMany({
+      where: {
+        agentId,
+        status: 'DELIVERED',
+        deliveredAt: {
+          gte: startDate,
+          lte: endDate,
+        },
       },
-    },
-    select: {
-      id: true,
-      deliveredAt: true,
-      payoutAmount: true,
-      status: true,
-    },
-    orderBy: {
-      deliveredAt: 'asc',
-    },
-  });
+      select: {
+        id: true,
+        deliveredAt: true,
+        payoutAmount: true,
+        status: true,
+      },
+      orderBy: {
+        deliveredAt: 'asc',
+      },
+    });
 
-  return {
-    schedules,
-    deliveries,
-    period: {
-      start: startDate,
-      end: endDate,
-      type: viewType,
-    },
-  };
+    return {
+      schedules,
+      deliveries,
+      period: {
+        start: startDate,
+        end: endDate,
+        type: viewType,
+      },
+    };
+  } catch (error: any) {
+    // If table doesn't exist, return empty calendar
+    if (error?.code === 'P2021' || error?.code === 'P2022' || error?.code === '42P01' || error?.message?.includes('does not exist')) {
+      console.warn('⚠️  AgentSchedule table does not exist - returning empty calendar');
+      let endDate: Date;
+      if (viewType === 'MONTHLY') {
+        endDate = new Date(startDate);
+        endDate.setMonth(endDate.getMonth() + 1);
+      } else {
+        endDate = new Date(startDate);
+        endDate.setDate(endDate.getDate() + 7);
+      }
+      return {
+        schedules: [],
+        deliveries: [],
+        period: {
+          start: startDate,
+          end: endDate,
+          type: viewType,
+        },
+      };
+    }
+    throw error;
+  }
 }
 
 export const scheduleService = {

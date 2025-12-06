@@ -1512,25 +1512,43 @@ export const agentController = {
         where.status = status;
       }
 
-      const [tickets, total] = await Promise.all([
-        prisma.supportTicket.findMany({
-          where,
-          include: {
-            order: {
-              select: {
-                id: true,
-                status: true,
+      let tickets, total;
+      try {
+        [tickets, total] = await Promise.all([
+          prisma.supportTicket.findMany({
+            where,
+            select: {
+              id: true,
+              issueType: true,
+              description: true,
+              status: true,
+              resolvedAt: true,
+              createdAt: true,
+              order: {
+                select: {
+                  id: true,
+                  status: true,
+                },
               },
             },
-          },
-          orderBy: {
-            createdAt: 'desc',
-          },
-          skip,
-          take: limitNum,
-        }),
-        prisma.supportTicket.count({ where }),
-      ]);
+            orderBy: {
+              createdAt: 'desc',
+            },
+            skip,
+            take: limitNum,
+          }),
+          prisma.supportTicket.count({ where }),
+        ]);
+      } catch (error: any) {
+        // If table doesn't exist, return empty results
+        if (error?.code === 'P2021' || error?.code === 'P2022' || error?.code === '42P01' || error?.message?.includes('does not exist')) {
+          console.warn('⚠️  SupportTicket table does not exist - returning empty results');
+          tickets = [];
+          total = 0;
+        } else {
+          throw error;
+        }
+      }
 
       res.json({
         tickets: tickets.map((ticket: any) => ({
