@@ -298,7 +298,21 @@ export const adminController = {
 
       const agent = await prisma.agent.findUnique({
         where: { id },
-        include: {
+        select: {
+          id: true,
+          status: true,
+          vehicleType: true,
+          city: true,
+          state: true,
+          pincode: true,
+          isApproved: true,
+          isBlocked: true,
+          blockedReason: true,
+          rating: true,
+          totalOrders: true,
+          completedOrders: true,
+          acceptanceRate: true,
+          createdAt: true,
           user: {
             select: {
               id: true,
@@ -313,9 +327,15 @@ export const adminController = {
           orders: {
             take: 10,
             orderBy: { createdAt: 'desc' },
-            include: {
+            select: {
+              id: true,
+              status: true,
+              createdAt: true,
+              payoutAmount: true,
               partner: {
-                include: {
+                select: {
+                  id: true,
+                  companyName: true,
                   user: {
                     select: { name: true },
                   },

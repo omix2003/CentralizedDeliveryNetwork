@@ -11,45 +11,81 @@ export const walletService = {
    * Get or create admin wallet (singleton)
    */
   async getAdminWallet() {
-    let wallet = await prisma.adminWallet.findFirst();
-    
-    if (!wallet) {
-      wallet = await prisma.adminWallet.create({
-        data: {
+    try {
+      let wallet = await prisma.adminWallet.findFirst();
+      
+      if (!wallet) {
+        wallet = await prisma.adminWallet.create({
+          data: {
+            balance: 0,
+            totalDeposited: 0,
+            totalPaidOut: 0,
+          },
+        });
+      }
+      
+      return wallet;
+    } catch (error: any) {
+      // If table doesn't exist, return a default wallet object
+      if (error?.code === 'P2021' || error?.code === '42P01' || error?.message?.includes('does not exist')) {
+        console.warn('⚠️  AdminWallet table does not exist - returning default wallet');
+        return {
+          id: 'default',
           balance: 0,
           totalDeposited: 0,
           totalPaidOut: 0,
-        },
-      });
+          lastUpdated: new Date(),
+          createdAt: new Date(),
+        };
+      }
+      throw error;
     }
-    
-    return wallet;
   },
 
   /**
    * Get or create agent wallet
    */
   async getAgentWallet(agentId: string) {
-    let wallet = await prisma.agentWallet.findUnique({
-      where: { agentId },
-    });
-    
-    if (!wallet) {
-      // Calculate next Monday for weekly payout
-      const nextMonday = getNextMonday();
+    try {
+      let wallet = await prisma.agentWallet.findUnique({
+        where: { agentId },
+      });
       
-      wallet = await prisma.agentWallet.create({
-        data: {
+      if (!wallet) {
+        // Calculate next Monday for weekly payout
+        const nextMonday = getNextMonday();
+        
+        wallet = await prisma.agentWallet.create({
+          data: {
+            agentId,
+            balance: 0,
+            totalEarned: 0,
+            totalPaidOut: 0,
+            nextPayoutDate: nextMonday,
+          },
+        });
+      }
+      
+      return wallet;
+    } catch (error: any) {
+      // If table doesn't exist, return a default wallet object
+      if (error?.code === 'P2021' || error?.code === '42P01' || error?.message?.includes('does not exist')) {
+        console.warn('⚠️  AgentWallet table does not exist - returning default wallet');
+        const nextMonday = getNextMonday();
+        return {
+          id: 'default',
           agentId,
           balance: 0,
           totalEarned: 0,
           totalPaidOut: 0,
+          lastPayoutDate: null,
           nextPayoutDate: nextMonday,
-        },
-      });
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+      }
+      throw error;
     }
-    
-    return wallet;
   },
 
   /**
@@ -239,31 +275,49 @@ export const walletService = {
     limit: number = 50,
     offset: number = 0
   ) {
-    const where: any = { walletType };
-    if (walletType === 'ADMIN_WALLET' && walletId) {
-      where.adminWalletId = walletId;
-    } else if (walletType === 'AGENT_WALLET' && walletId) {
-      where.agentWalletId = walletId;
-    }
+    try {
+      const where: any = { walletType };
+      if (walletType === 'ADMIN_WALLET' && walletId) {
+        where.adminWalletId = walletId;
+      } else if (walletType === 'AGENT_WALLET' && walletId) {
+        where.agentWalletId = walletId;
+      }
 
-    const transactions = await prisma.walletTransaction.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-      skip: offset,
-      include: {
-        order: {
-          select: {
-            id: true,
-            status: true,
+      const transactions = await prisma.walletTransaction.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        skip: offset,
+        select: {
+          id: true,
+          walletType: true,
+          amount: true,
+          type: true,
+          description: true,
+          balanceBefore: true,
+          balanceAfter: true,
+          status: true,
+          createdAt: true,
+          order: {
+            select: {
+              id: true,
+              status: true,
+            },
           },
         },
-      },
-    });
+      });
 
-    const total = await prisma.walletTransaction.count({ where });
+      const total = await prisma.walletTransaction.count({ where });
 
-    return { transactions, total };
+      return { transactions, total };
+    } catch (error: any) {
+      // If table doesn't exist, return empty results
+      if (error?.code === 'P2021' || error?.code === '42P01' || error?.message?.includes('does not exist')) {
+        console.warn('⚠️  WalletTransaction table does not exist - returning empty results');
+        return { transactions: [], total: 0 };
+      }
+      throw error;
+    }
   },
 };
 

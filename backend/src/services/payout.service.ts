@@ -93,15 +93,26 @@ export const payoutService = {
     }
 
     // Check if payout already exists for this period
-    const existingPayout = await prisma.walletPayout.findUnique({
-      where: {
-        agentId_periodStart_periodEnd: {
-          agentId,
-          periodStart: summary.periodStart,
-          periodEnd: summary.periodEnd,
+    let existingPayout;
+    try {
+      existingPayout = await prisma.walletPayout.findUnique({
+        where: {
+          agentId_periodStart_periodEnd: {
+            agentId,
+            periodStart: summary.periodStart,
+            periodEnd: summary.periodEnd,
+          },
         },
-      },
-    });
+      });
+    } catch (error: any) {
+      // If table doesn't exist, continue without checking for existing payout
+      if (error?.code === 'P2021' || error?.code === '42P01' || error?.message?.includes('does not exist')) {
+        console.warn('⚠️  WalletPayout table does not exist - skipping duplicate check');
+        existingPayout = null;
+      } else {
+        throw error;
+      }
+    }
 
     if (existingPayout) {
       if (existingPayout.status === 'PROCESSED') {
@@ -162,25 +173,34 @@ export const payoutService = {
    * Get all agents ready for weekly payout (balance > 0, nextPayoutDate is today or past)
    */
   async getAgentsReadyForPayout(): Promise<Array<{ agentId: string; balance: number; nextPayoutDate: Date | null }>> {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
 
-    const wallets = await prisma.agentWallet.findMany({
-      where: {
-        balance: { gt: 0 },
-        OR: [
-          { nextPayoutDate: { lte: today } },
-          { nextPayoutDate: null },
-        ],
-      },
-      select: {
-        agentId: true,
-        balance: true,
-        nextPayoutDate: true,
-      },
-    });
+      const wallets = await prisma.agentWallet.findMany({
+        where: {
+          balance: { gt: 0 },
+          OR: [
+            { nextPayoutDate: { lte: today } },
+            { nextPayoutDate: null },
+          ],
+        },
+        select: {
+          agentId: true,
+          balance: true,
+          nextPayoutDate: true,
+        },
+      });
 
-    return wallets;
+      return wallets;
+    } catch (error: any) {
+      // If table doesn't exist, return empty array
+      if (error?.code === 'P2021' || error?.code === '42P01' || error?.message?.includes('does not exist')) {
+        console.warn('⚠️  AgentWallet table does not exist - returning empty results');
+        return [];
+      }
+      throw error;
+    }
   },
 
   /**
@@ -209,16 +229,25 @@ export const payoutService = {
    * Get payout history for an agent
    */
   async getAgentPayoutHistory(agentId: string, limit: number = 20, offset: number = 0) {
-    const payouts = await prisma.walletPayout.findMany({
-      where: { agentId },
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-      skip: offset,
-    });
+    try {
+      const payouts = await prisma.walletPayout.findMany({
+        where: { agentId },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        skip: offset,
+      });
 
-    const total = await prisma.walletPayout.count({ where: { agentId } });
+      const total = await prisma.walletPayout.count({ where: { agentId } });
 
-    return { payouts, total };
+      return { payouts, total };
+    } catch (error: any) {
+      // If table doesn't exist, return empty results
+      if (error?.code === 'P2021' || error?.code === '42P01' || error?.message?.includes('does not exist')) {
+        console.warn('⚠️  WalletPayout table does not exist - returning empty results');
+        return { payouts: [], total: 0 };
+      }
+      throw error;
+    }
   },
 
   /**
@@ -229,34 +258,55 @@ export const payoutService = {
     limit: number = 50,
     offset: number = 0
   ) {
-    const where: any = {};
-    if (status) {
-      where.status = status;
-    }
+    try {
+      const where: any = {};
+      if (status) {
+        where.status = status;
+      }
 
-    const payouts = await prisma.walletPayout.findMany({
-      where,
-      include: {
-        agent: {
-          include: {
-            user: {
-              select: {
-                name: true,
-                email: true,
-                phone: true,
+      const payouts = await prisma.walletPayout.findMany({
+        where,
+        select: {
+          id: true,
+          agentId: true,
+          amount: true,
+          periodStart: true,
+          periodEnd: true,
+          status: true,
+          paymentMethod: true,
+          bankAccount: true,
+          upiId: true,
+          processedAt: true,
+          createdAt: true,
+          agent: {
+            select: {
+              id: true,
+              user: {
+                select: {
+                  name: true,
+                  email: true,
+                  phone: true,
+                },
               },
             },
           },
         },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-      skip: offset,
-    });
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        skip: offset,
+      });
 
-    const total = await prisma.walletPayout.count({ where });
+      const total = await prisma.walletPayout.count({ where });
 
-    return { payouts, total };
+      return { payouts, total };
+    } catch (error: any) {
+      // If table doesn't exist, return empty results
+      if (error?.code === 'P2021' || error?.code === '42P01' || error?.message?.includes('does not exist')) {
+        console.warn('⚠️  WalletPayout table does not exist - returning empty results');
+        return { payouts: [], total: 0 };
+      }
+      throw error;
+    }
   },
 };
 

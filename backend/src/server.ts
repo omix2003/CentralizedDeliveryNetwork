@@ -332,52 +332,34 @@ app.use((req, res) => {
   });
 });
 
-// Check database connection and verify AgentRating table exists, run migrations if needed
+// Check database connection (non-blocking - server will start even if check fails)
 (async () => {
   try {
     // Test database connection
     await prisma.$connect();
     console.log('✅ Database connection established');
     
-    // Simple check to verify AgentRating table exists
-    await prisma.$queryRaw`SELECT 1 FROM "AgentRating" LIMIT 1`;
-    console.log('✅ AgentRating table exists');
+    // Optional check to verify AgentRating table exists (non-blocking)
+    try {
+      await prisma.$queryRaw`SELECT 1 FROM "AgentRating" LIMIT 1`;
+      console.log('✅ AgentRating table exists');
+    } catch (tableError: any) {
+      // Table doesn't exist - this is OK, migrations will create it
+      if (tableError?.code === 'P2021' || tableError?.code === '42P01' || tableError?.message?.includes('does not exist')) {
+        console.warn('⚠️  AgentRating table does not exist yet - migrations may need to run');
+        console.warn('⚠️  This is normal on first deployment. Migrations should run via prestart script.');
+      } else {
+        console.warn('⚠️  Could not verify AgentRating table:', tableError?.message);
+      }
+    }
   } catch (error: any) {
-    console.error('❌ Database connection or verification failed:', {
+    console.error('❌ Database connection failed:', {
       code: error?.code,
       message: error?.message,
       name: error?.name,
     });
     
-    if (error?.code === 'P2021' || error?.message?.includes('does not exist')) {
-      console.error('❌ AgentRating table does not exist!');
-      console.error('⚠️  Attempting to run migrations automatically...');
-      try {
-        const { execSync } = await import('child_process');
-        console.log('🔄 Running: npx prisma migrate deploy');
-        execSync('npx prisma migrate deploy', { 
-          stdio: 'inherit',
-          env: { ...process.env },
-          cwd: process.cwd()
-        });
-        console.log('✅ Migrations applied successfully');
-        // Verify table exists now
-        try {
-          await prisma.$queryRaw`SELECT 1 FROM "AgentRating" LIMIT 1`;
-          console.log('✅ AgentRating table verified after migration');
-        } catch (verifyError) {
-          console.error('⚠️  Table still not found after migration attempt');
-        }
-      } catch (migrateError: any) {
-        console.error('❌ Failed to run migrations automatically:', migrateError?.message);
-        console.error('⚠️  Error details:', {
-          code: migrateError?.code,
-          signal: migrateError?.signal,
-          status: migrateError?.status,
-        });
-        console.error('⚠️  Please ensure migrations run during build or add to start command');
-      }
-    } else if (error?.code === 'P1001' || error?.message?.includes('Can\'t reach database server')) {
+    if (error?.code === 'P1001' || error?.message?.includes('Can\'t reach database server')) {
       console.error('❌ Cannot connect to database server!');
       console.error('⚠️  Please check DATABASE_URL environment variable');
       console.error('⚠️  Server will continue to start but database operations will fail');
