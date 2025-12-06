@@ -199,9 +199,20 @@ export const partnerController = {
           estimatedDuration,
           status: 'SEARCHING_AGENT',
         },
-        include: {
+        select: {
+          id: true,
+          status: true,
+          pickupLat: true,
+          pickupLng: true,
+          dropLat: true,
+          dropLng: true,
+          payoutAmount: true,
+          priority: true,
+          estimatedDuration: true,
+          createdAt: true,
           partner: {
-            include: {
+            select: {
+              id: true,
               user: {
                 select: {
                   name: true,
@@ -217,12 +228,25 @@ export const partnerController = {
       const { barcodeService } = await import('../services/barcode.service');
       await barcodeService.assignBarcodeToOrder(order.id);
 
-      // Fetch updated order with barcode/QR
+      // Fetch updated order with barcode/QR (using select to avoid non-existent columns)
       const orderWithBarcode = await prisma.order.findUnique({
         where: { id: order.id },
-        include: {
+        select: {
+          id: true,
+          status: true,
+          pickupLat: true,
+          pickupLng: true,
+          dropLat: true,
+          dropLng: true,
+          payoutAmount: true,
+          priority: true,
+          estimatedDuration: true,
+          createdAt: true,
+          barcode: true,
+          qrCode: true,
           partner: {
-            include: {
+            select: {
+              id: true,
               user: {
                 select: {
                   name: true,
@@ -480,9 +504,15 @@ export const partnerController = {
       const { delayCheckerService } = await import('../services/delay-checker.service');
       await delayCheckerService.checkOrderDelay(orderId);
       
-      // Refresh order to get updated status
+      // Refresh order to get updated status (using select to avoid non-existent columns)
       const refreshedOrder = await prisma.order.findUnique({
         where: { id: orderId },
+        select: {
+          id: true,
+          status: true,
+          pickedUpAt: true,
+          estimatedDuration: true,
+        },
       });
       
       // Calculate timing information
@@ -760,9 +790,21 @@ export const partnerController = {
       const updatedOrder = await prisma.order.update({
         where: { id: orderId },
         data: updateData,
-        include: {
+        select: {
+          id: true,
+          status: true,
+          pickupLat: true,
+          pickupLng: true,
+          dropLat: true,
+          dropLng: true,
+          payoutAmount: true,
+          priority: true,
+          estimatedDuration: true,
+          createdAt: true,
+          updatedAt: true,
           partner: {
-            include: {
+            select: {
+              id: true,
               user: {
                 select: {
                   name: true,

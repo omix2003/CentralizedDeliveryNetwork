@@ -902,10 +902,12 @@ export const agentController = {
         );
       }
 
-      // Fetch updated order with includes for response
+      // Fetch updated order with select to avoid accessing non-existent columns
       const orderWithIncludes = await prisma.order.findUnique({
         where: { id: orderId },
-        include: {
+        select: {
+          id: true,
+          status: true,
           partner: {
             select: {
               id: true,

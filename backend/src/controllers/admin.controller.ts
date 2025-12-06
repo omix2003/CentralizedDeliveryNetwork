@@ -1040,7 +1040,10 @@ export const adminController = {
       const [orders, total] = await Promise.all([
         prisma.order.findMany({
           where,
-          include: {
+          select: {
+            id: true,
+            status: true,
+            createdAt: true,
             partner: {
               select: {
                 id: true,
@@ -1056,7 +1059,8 @@ export const adminController = {
               },
             },
             agent: {
-              include: {
+              select: {
+                id: true,
                 user: {
                   select: {
                     name: true,
@@ -1133,6 +1137,12 @@ export const adminController = {
       // Refresh order to get updated status
       const refreshedOrder = await prisma.order.findUnique({
         where: { id },
+        select: {
+          id: true,
+          status: true,
+          pickedUpAt: true,
+          estimatedDuration: true,
+        },
       });
       
       // Calculate timing information
