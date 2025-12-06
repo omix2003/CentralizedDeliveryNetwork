@@ -197,45 +197,65 @@ export const revenueService = {
     startDate?: Date,
     endDate?: Date
   ): Promise<RevenueSummary> => {
-    const where: any = {
-      partnerId,
-      status: 'PROCESSED',
-    };
+    try {
+      const where: any = {
+        partnerId,
+        status: 'PROCESSED',
+      };
 
-    if (startDate || endDate) {
-      where.createdAt = {};
-      if (startDate) where.createdAt.gte = startDate;
-      if (endDate) where.createdAt.lte = endDate;
-    }
+      if (startDate || endDate) {
+        where.createdAt = {};
+        if (startDate) where.createdAt.gte = startDate;
+        if (endDate) where.createdAt.lte = endDate;
+      }
 
-    const revenues = await prisma.partnerRevenue.findMany({
-      where,
-      include: {
-        order: {
-          select: {
-            status: true,
+      const revenues = await prisma.partnerRevenue.findMany({
+        where,
+        select: {
+          netRevenue: true,
+          platformFee: true,
+          deliveryFee: true,
+          order: {
+            select: {
+              status: true,
+            },
           },
         },
-      },
-    });
+      });
 
-    const totalRevenue = revenues.reduce((sum, r) => sum + r.netRevenue, 0);
-    const totalOrders = revenues.length;
-    const completedOrders = revenues.filter(r => r.order.status === 'DELIVERED').length;
-    const cancelledOrders = revenues.filter(r => r.order.status === 'CANCELLED').length;
-    const platformFees = revenues.reduce((sum, r) => sum + r.platformFee, 0);
-    const agentPayouts = revenues.reduce((sum, r) => sum + r.deliveryFee, 0);
-    const averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+      const totalRevenue = revenues.reduce((sum, r) => sum + r.netRevenue, 0);
+      const totalOrders = revenues.length;
+      const completedOrders = revenues.filter(r => r.order.status === 'DELIVERED').length;
+      const cancelledOrders = revenues.filter(r => r.order.status === 'CANCELLED').length;
+      const platformFees = revenues.reduce((sum, r) => sum + r.platformFee, 0);
+      const agentPayouts = revenues.reduce((sum, r) => sum + r.deliveryFee, 0);
+      const averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
 
-    return {
-      totalRevenue,
-      totalOrders,
-      completedOrders,
-      cancelledOrders,
-      averageOrderValue,
-      platformFees,
-      agentPayouts,
-    };
+      return {
+        totalRevenue,
+        totalOrders,
+        completedOrders,
+        cancelledOrders,
+        averageOrderValue,
+        platformFees,
+        agentPayouts,
+      };
+    } catch (error: any) {
+      // Handle missing PartnerRevenue table
+      if (error.code === 'P2021' || error.code === '42P01' || error.message?.includes('does not exist')) {
+        console.warn('[Revenue] PartnerRevenue table does not exist, returning default values');
+        return {
+          totalRevenue: 0,
+          totalOrders: 0,
+          completedOrders: 0,
+          cancelledOrders: 0,
+          averageOrderValue: 0,
+          platformFees: 0,
+          agentPayouts: 0,
+        };
+      }
+      throw error;
+    }
   },
 
   /**
@@ -294,27 +314,50 @@ export const revenueService = {
     periodEnd: Date,
     periodType: 'DAILY' | 'WEEKLY' | 'MONTHLY'
   ) => {
-    return await prisma.partnerRevenue.findMany({
-      where: {
-        partnerId,
-        periodStart: { gte: periodStart },
-        periodEnd: { lte: periodEnd },
-        periodType,
-        status: 'PROCESSED',
-      },
-      include: {
-        order: {
-          select: {
-            id: true,
-            status: true,
-            createdAt: true,
+    try {
+      return await prisma.partnerRevenue.findMany({
+        where: {
+          partnerId,
+          periodStart: { gte: periodStart },
+          periodEnd: { lte: periodEnd },
+          periodType,
+          status: 'PROCESSED',
+        },
+        select: {
+          id: true,
+          partnerId: true,
+          orderId: true,
+          orderAmount: true,
+          deliveryFee: true,
+          platformFee: true,
+          netRevenue: true,
+          periodStart: true,
+          periodEnd: true,
+          periodType: true,
+          status: true,
+          processedAt: true,
+          createdAt: true,
+          updatedAt: true,
+          order: {
+            select: {
+              id: true,
+              status: true,
+              createdAt: true,
+            },
           },
         },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+    } catch (error: any) {
+      // Handle missing PartnerRevenue table
+      if (error.code === 'P2021' || error.code === '42P01' || error.message?.includes('does not exist')) {
+        console.warn('[Revenue] PartnerRevenue table does not exist, returning empty array');
+        return [];
+      }
+      throw error;
+    }
   },
 
   /**

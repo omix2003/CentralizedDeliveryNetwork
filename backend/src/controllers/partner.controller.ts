@@ -225,10 +225,15 @@ export const partnerController = {
       });
 
       // Generate and assign barcode/QR code after order creation
-      const { barcodeService } = await import('../services/barcode.service');
-      await barcodeService.assignBarcodeToOrder(order.id);
+      try {
+        const { barcodeService } = await import('../services/barcode.service');
+        await barcodeService.assignBarcodeToOrder(order.id);
+      } catch (error: any) {
+        // Log but don't fail if barcode service has issues
+        console.warn('[Partner] Barcode service error:', error.message);
+      }
 
-      // Fetch updated order with barcode/QR (using select to avoid non-existent columns)
+      // Fetch updated order (using select to avoid non-existent columns)
       const orderWithBarcode = await prisma.order.findUnique({
         where: { id: order.id },
         select: {
@@ -242,8 +247,6 @@ export const partnerController = {
           priority: true,
           estimatedDuration: true,
           createdAt: true,
-          barcode: true,
-          qrCode: true,
           partner: {
             select: {
               id: true,
@@ -471,9 +474,29 @@ export const partnerController = {
           id: orderId,
           partnerId, // Ensure partner owns this order
         },
-        include: {
+        select: {
+          id: true,
+          status: true,
+          pickupLat: true,
+          pickupLng: true,
+          dropLat: true,
+          dropLng: true,
+          payoutAmount: true,
+          priority: true,
+          estimatedDuration: true,
+          actualDuration: true,
+          assignedAt: true,
+          pickedUpAt: true,
+          deliveredAt: true,
+          cancelledAt: true,
+          cancellationReason: true,
+          createdAt: true,
+          updatedAt: true,
           agent: {
-            include: {
+            select: {
+              id: true,
+              vehicleType: true,
+              rating: true,
               user: {
                 select: {
                   id: true,
@@ -485,12 +508,9 @@ export const partnerController = {
             },
           },
           partner: {
-            include: {
-              user: {
-                select: {
-                  name: true,
-                },
-              },
+            select: {
+              id: true,
+              companyName: true,
             },
           },
         },
@@ -501,30 +521,52 @@ export const partnerController = {
       }
 
       // Check and update delayed status
-      const { delayCheckerService } = await import('../services/delay-checker.service');
-      await delayCheckerService.checkOrderDelay(orderId);
+      try {
+        const { delayCheckerService } = await import('../services/delay-checker.service');
+        await delayCheckerService.checkOrderDelay(orderId);
+      } catch (error: any) {
+        // Log but don't fail if delay checker service has issues
+        console.warn('[Partner] Delay checker service error:', error.message);
+      }
       
       // Refresh order to get updated status (using select to avoid non-existent columns)
-      const refreshedOrder = await prisma.order.findUnique({
-        where: { id: orderId },
-        select: {
-          id: true,
-          status: true,
-          pickedUpAt: true,
-          estimatedDuration: true,
-        },
-      });
+      let refreshedOrder = null;
+      try {
+        refreshedOrder = await prisma.order.findUnique({
+          where: { id: orderId },
+          select: {
+            id: true,
+            status: true,
+            pickedUpAt: true,
+            estimatedDuration: true,
+          },
+        });
+      } catch (error: any) {
+        console.warn('[Partner] Error refreshing order:', error.message);
+      }
       
       // Calculate timing information
-      const timing = delayCheckerService.getOrderTiming({
-        pickedUpAt: refreshedOrder?.pickedUpAt || order.pickedUpAt,
-        estimatedDuration: refreshedOrder?.estimatedDuration || order.estimatedDuration,
-      });
+      let timing = {
+        elapsedMinutes: 0,
+        remainingMinutes: 0,
+        isDelayed: false,
+        elapsedTime: '0m',
+        remainingTime: '0m',
+      };
+      try {
+        const { delayCheckerService } = await import('../services/delay-checker.service');
+        timing = delayCheckerService.getOrderTiming({
+          pickedUpAt: refreshedOrder?.pickedUpAt || order.pickedUpAt,
+          estimatedDuration: refreshedOrder?.estimatedDuration || order.estimatedDuration,
+        });
+      } catch (error: any) {
+        console.warn('[Partner] Error calculating timing:', error.message);
+      }
 
       res.json({
         id: order.id,
         trackingNumber: order.id.substring(0, 8).toUpperCase(),
-        status: order.status,
+        status: refreshedOrder?.status || order.status,
         pickup: {
           latitude: order.pickupLat,
           longitude: order.pickupLng,
@@ -544,8 +586,6 @@ export const partnerController = {
         cancellationReason: order.cancellationReason,
         createdAt: order.createdAt.toISOString(),
         updatedAt: order.updatedAt.toISOString(),
-        barcode: order.barcode || null,
-        qrCode: order.qrCode || null,
         timing: {
           elapsedMinutes: timing.elapsedMinutes,
           remainingMinutes: timing.remainingMinutes,
@@ -1212,25 +1252,52 @@ export const partnerController = {
         where.status = status;
       }
 
-      const [tickets, total] = await Promise.all([
-        prisma.supportTicket.findMany({
-          where,
-          include: {
-            order: {
-              select: {
-                id: true,
-                status: true,
+      let tickets: any[] = [];
+      let total = 0;
+
+      try {
+        [tickets, total] = await Promise.all([
+          prisma.supportTicket.findMany({
+            where,
+            select: {
+              id: true,
+              issueType: true,
+              description: true,
+              status: true,
+              resolvedAt: true,
+              createdAt: true,
+              updatedAt: true,
+              order: {
+                select: {
+                  id: true,
+                  status: true,
+                },
               },
             },
-          },
-          orderBy: {
-            createdAt: 'desc',
-          },
-          skip,
-          take: limitNum,
-        }),
-        prisma.supportTicket.count({ where }),
-      ]);
+            orderBy: {
+              createdAt: 'desc',
+            },
+            skip,
+            take: limitNum,
+          }),
+          prisma.supportTicket.count({ where }),
+        ]);
+      } catch (error: any) {
+        // Handle missing SupportTicket table
+        if (error.code === 'P2021' || error.code === '42P01' || error.message?.includes('does not exist')) {
+          console.warn('[Partner] SupportTicket table does not exist, returning empty results');
+          return res.json({
+            tickets: [],
+            pagination: {
+              page: pageNum,
+              limit: limitNum,
+              total: 0,
+              totalPages: 0,
+            },
+          });
+        }
+        throw error;
+      }
 
       res.json({
         tickets: tickets.map((ticket: any) => ({
