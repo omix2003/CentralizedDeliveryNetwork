@@ -72,11 +72,24 @@ export const errorHandler=(
 
         if (err.code === 'P2021' || err.code === 'P2022') {
             // Table or column does not exist
-            return res.status(503).json({
-                error: 'Service Unavailable',
-                message: 'Database schema is not up to date. Please run migrations.',
+            // Log the error but return a more graceful response
+            console.error('⚠️  Database schema error (P2021/P2022):', {
                 code: err.code,
-                ...(process.env.NODE_ENV === 'development' && { details: err.meta }),
+                message: err.message,
+                meta: err.meta,
+                url: req.url,
+                method: req.method,
+            });
+            
+            // Return 500 instead of 503 to indicate it's a configuration issue, not service unavailability
+            return res.status(500).json({
+                error: 'Database Schema Error',
+                message: 'Database schema is not up to date. Migrations may need to run.',
+                code: err.code,
+                ...(process.env.NODE_ENV === 'development' && { 
+                    details: err.meta,
+                    hint: 'Run: npx prisma migrate deploy'
+                }),
             });
         }
 
