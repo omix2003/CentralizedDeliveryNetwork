@@ -566,52 +566,120 @@ export const partnerController = {
 
       const orderId = req.params.id;
 
-      const order = await prisma.order.findFirst({
-        where: {
-          id: orderId,
-          partnerId, // Ensure partner owns this order
-        },
-        select: {
-          id: true,
-          status: true,
-          pickupLat: true,
-          pickupLng: true,
-          dropLat: true,
-          dropLng: true,
-          payoutAmount: true,
-          priority: true,
-          estimatedDuration: true,
-          actualDuration: true,
-          assignedAt: true,
-          pickedUpAt: true,
-          deliveredAt: true,
-          cancelledAt: true,
-          cancellationReason: true,
-          createdAt: true,
-          updatedAt: true,
-          agent: {
-            select: {
-              id: true,
-              vehicleType: true,
-              rating: true,
-              user: {
-                select: {
-                  id: true,
-                  name: true,
-                  email: true,
-                  phone: true,
+      // Try to include barcode and qrCode in the main query
+      let order: any = null;
+      let barcode = null;
+      let qrCode = null;
+      
+      try {
+        // First try with barcode/qrCode included
+        order = await prisma.order.findFirst({
+          where: {
+            id: orderId,
+            partnerId, // Ensure partner owns this order
+          },
+          select: {
+            id: true,
+            status: true,
+            pickupLat: true,
+            pickupLng: true,
+            dropLat: true,
+            dropLng: true,
+            payoutAmount: true,
+            priority: true,
+            estimatedDuration: true,
+            actualDuration: true,
+            assignedAt: true,
+            pickedUpAt: true,
+            deliveredAt: true,
+            cancelledAt: true,
+            cancellationReason: true,
+            createdAt: true,
+            updatedAt: true,
+            barcode: true,
+            qrCode: true,
+            agent: {
+              select: {
+                id: true,
+                vehicleType: true,
+                rating: true,
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    phone: true,
+                  },
                 },
               },
             },
-          },
-          partner: {
-            select: {
-              id: true,
-              companyName: true,
+            partner: {
+              select: {
+                id: true,
+                companyName: true,
+              },
             },
           },
-        },
-      });
+        });
+        
+        if (order) {
+          barcode = order.barcode;
+          qrCode = order.qrCode;
+        }
+      } catch (error: any) {
+        // If barcode/qrCode columns don't exist, try without them
+        if (error.message?.includes('barcode') || error.message?.includes('qrCode')) {
+          console.warn('[Partner] Barcode/QR code columns not found, fetching without them');
+          order = await prisma.order.findFirst({
+            where: {
+              id: orderId,
+              partnerId,
+            },
+            select: {
+              id: true,
+              status: true,
+              pickupLat: true,
+              pickupLng: true,
+              dropLat: true,
+              dropLng: true,
+              payoutAmount: true,
+              priority: true,
+              estimatedDuration: true,
+              actualDuration: true,
+              assignedAt: true,
+              pickedUpAt: true,
+              deliveredAt: true,
+              cancelledAt: true,
+              cancellationReason: true,
+              createdAt: true,
+              updatedAt: true,
+              agent: {
+                select: {
+                  id: true,
+                  vehicleType: true,
+                  rating: true,
+                  user: {
+                    select: {
+                      id: true,
+                      name: true,
+                      email: true,
+                      phone: true,
+                    },
+                  },
+                },
+              },
+              partner: {
+                select: {
+                  id: true,
+                  companyName: true,
+                },
+              },
+            },
+          });
+        } else {
+          throw error;
+        }
+      }
 
       if (!order) {
         return res.status(404).json({ error: 'Order not found' });
@@ -660,22 +728,50 @@ export const partnerController = {
         console.warn('[Partner] Error calculating timing:', error.message);
       }
 
-      // Try to get barcode and qrCode if they exist
-      let barcode = null;
-      let qrCode = null;
-      try {
-        const orderWithCodes = await prisma.order.findUnique({
-          where: { id: orderId },
-          select: {
-            barcode: true,
-            qrCode: true,
-          },
-        });
-        barcode = orderWithCodes?.barcode || null;
-        qrCode = orderWithCodes?.qrCode || null;
-      } catch (error: any) {
-        // Columns might not exist, that's okay
-        console.warn('[Partner] Could not fetch barcode/qrCode:', error.message);
+      // If barcode/qrCode weren't fetched in main query, try to get them separately
+      if (barcode === undefined && qrCode === undefined) {
+        try {
+          const orderWithCodes = await prisma.order.findUnique({
+            where: { id: orderId },
+            select: {
+              barcode: true,
+              qrCode: true,
+            },
+          });
+          barcode = orderWithCodes?.barcode || null;
+          qrCode = orderWithCodes?.qrCode || null;
+        } catch (error: any) {
+          // Columns might not exist, that's okay
+          console.warn('[Partner] Could not fetch barcode/qrCode:', error.message);
+          barcode = null;
+          qrCode = null;
+        }
+      }
+      
+      // If barcode/qrCode are null or missing, try to generate them
+      if (order && (!barcode || !qrCode)) {
+        try {
+          const { barcodeService } = await import('../services/barcode.service');
+          await barcodeService.assignBarcodeToOrder(order.id);
+          // Fetch again after assignment
+          try {
+            const orderWithCodes = await prisma.order.findUnique({
+              where: { id: orderId },
+              select: {
+                barcode: true,
+                qrCode: true,
+              },
+            });
+            if (orderWithCodes) {
+              barcode = orderWithCodes.barcode || barcode;
+              qrCode = orderWithCodes.qrCode || qrCode;
+            }
+          } catch (fetchError: any) {
+            console.warn('[Partner] Could not fetch barcode/qrCode after generation:', fetchError.message);
+          }
+        } catch (error: any) {
+          console.warn('[Partner] Could not generate barcode/qrCode:', error.message);
+        }
       }
 
       res.json({
