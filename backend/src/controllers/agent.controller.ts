@@ -885,8 +885,17 @@ export const agentController = {
       const { status, cancellationReason } = req.body;
 
       // Verify agent owns this order
+      // Use select to avoid fetching barcode/qrCode if columns don't exist yet
       const order = await prisma.order.findUnique({
         where: { id: orderId },
+        select: {
+          id: true,
+          status: true,
+          agentId: true,
+          partnerId: true,
+          cancellationReason: true,
+          cancelledAt: true,
+        },
       });
 
       if (!order) {
@@ -1293,9 +1302,29 @@ export const agentController = {
                 }
                 
                 // Refresh order to get updated status (without relations to avoid type issues)
+                // Use select to avoid fetching barcode/qrCode if columns don't exist yet
                 try {
                   const refreshedOrderData = await prisma.order.findUnique({
                     where: { id: order.id },
+                    select: {
+                      id: true,
+                      status: true,
+                      agentId: true,
+                      partnerId: true,
+                      pickupLat: true,
+                      pickupLng: true,
+                      dropLat: true,
+                      dropLng: true,
+                      payoutAmount: true,
+                      priority: true,
+                      estimatedDuration: true,
+                      assignedAt: true,
+                      pickedUpAt: true,
+                      deliveredAt: true,
+                      cancelledAt: true,
+                      createdAt: true,
+                      updatedAt: true,
+                    },
                   });
                   
                   if (refreshedOrderData) {
@@ -1683,9 +1712,16 @@ export const agentController = {
       }
 
       // Verify order exists and belongs to agent if orderId is provided
+      // Use select to avoid fetching barcode/qrCode if columns don't exist yet
       if (orderId) {
         const order = await prisma.order.findUnique({
           where: { id: orderId },
+          select: {
+            id: true,
+            status: true,
+            agentId: true,
+            partnerId: true,
+          },
         });
 
         if (!order) {
