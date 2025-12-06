@@ -310,6 +310,11 @@ export const partnerController = {
                   },
                 },
               });
+            } else {
+              // Re-throw if it's a different error
+              throw fallbackError;
+            }
+          }
         } else {
           // Re-throw if it's a different error
           throw createError;
